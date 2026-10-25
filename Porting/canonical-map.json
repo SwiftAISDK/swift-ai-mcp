@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "package": "swift-ai-mcp",
+  "status": "coarse-import",
+  "upstream": [
+    {
+      "name": "@ai-sdk/mcp",
+      "implementation": [
+        "packages/mcp/src"
+      ],
+      "tests": [
+        "packages/mcp/src/index.test.ts",
+        "packages/mcp/src/tool/json-rpc-message.test.ts",
+        "packages/mcp/src/tool/mcp-app-fingerprint.test.ts",
+        "packages/mcp/src/tool/mcp-apps.test.ts",
+        "packages/mcp/src/tool/mcp-client.test.ts",
+        "packages/mcp/src/tool/mcp-event-webhook.test.ts",
+        "packages/mcp/src/tool/mcp-events-adapter-creation.test.ts",
+        "packages/mcp/src/tool/mcp-events-adapter.test.ts",
+        "packages/mcp/src/tool/mcp-events.test.ts",
+        "packages/mcp/src/tool/mcp-http-headers.test.ts",
+        "packages/mcp/src/tool/mcp-http-transport.test.ts",
+        "packages/mcp/src/tool/mcp-sse-transport.test.ts",
+        "packages/mcp/src/tool/mcp-stdio/create-child-process.test.ts",
+        "packages/mcp/src/tool/mcp-stdio/get-environment.test.ts",
+        "packages/mcp/src/tool/mcp-stdio/mcp-stdio-transport.test.ts",
+        "packages/mcp/src/tool/oauth-credential-invalidation.test.ts",
+        "packages/mcp/src/tool/oauth.test.ts",
+        "packages/mcp/src/tool/types.test.ts",
+        "packages/mcp/src/util/oauth.util.test.ts"
+      ]
+    }
+  ],
+  "swift": {
+    "sources": [
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPApps.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientActor.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientHelpers.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventAdapter.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventTypes.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventWebhook.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEvents.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPHTTPHeaders.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPHTTPTransport.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthDiscovery.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthFlow.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthHelpers.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthToken.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthTypes.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPStdioTransport.swift",
+      "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPTypes.swift"
+    ],
+    "tests": [
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/FixtureDownloadTransport.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPClientTestSupport.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPClientTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPHTTPTransportStreamingTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPModernProtocolTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPMultiRoundTripTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuth2026Tests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthFlowTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthMigrationTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthTestSupport.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPStdioTransportTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPUpstream241Tests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/TestSupport.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261023Tests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261025Tests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPCore20261011Tests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPEvents20261011Tests.swift"
+    ],
+    "resources": []
+  },
+  "differences": [
+    {
+      "kind": "native-adaptation",
+      "reason": "Preserve Swift async/await, Sendable, Foundation transport and existing documented gaps; see Docs/CoreV6Parity.md and PortingStatus.md."
+    }
+  ],
+  "reviewNote": "M6: MCP runtime, OAuth, event adapters, app metadata and focused tests extracted unchanged. Tool bridging depends on the high-level SwiftAI module; core has no MCP dependency. Mixed core/MCP integration tests and their shared support remain in the root workspace."
+}

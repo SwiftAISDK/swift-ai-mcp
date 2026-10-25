@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "package": "swift-ai-mcp",
+  "version": "1.0.0",
+  "releaseID": "modular-3",
+  "source": {
+    "commit": "7fc9b4cd72f8f83b75ba7eee2e38d37127539317",
+    "baseCommit": "7fc9b4cd72f8f83b75ba7eee2e38d37127539317",
+    "workingTree": false,
+    "inputsSHA256": "49b802ba4a30454f78c9886ab3114537ef659ab3e6db7775479b7351f6e3f0ab"
+  },
+  "dependencies": [
+    {
+      "package": "swift-ai-core",
+      "from": "1.0.0"
+    }
+  ],
+  "changes": [
+    {
+      "id": "remaining-package-extraction",
+      "notes": "Extract the existing runtime, typed settings and standalone tests from the compatibility aggregate. Preserve the reviewed npm baseline and existing capability/gap boundaries.",
+      "compatibility": "Initial independent Swift package version. Existing SwiftAISDK entry points remain in the development compatibility facade; no npm-version equivalence is implied."
+    }
+  ],
+  "canonicalDirectory": "Packages/swift-ai-mcp",
+  "upstream": [
+    {
+      "name": "@ai-sdk/mcp",
+      "reviewedVersion": "2.0.84",
+      "ledgerKind": "provider",
+      "evidence": "`MCPClient`, `MCPHTTPTransport`, `MCPStdioTransport`, `MCPApps`, `MCPClientTests.swift`, `MCPOAuthTests.swift`, `MCPStdioTransportTests.swift`, `MCPModernProtocolTests.swift`",
+      "reviewStatus": "imported-reviewed-with-gaps",
+      "archiveIntegrity": "sha512-yVhkdm1cpN1L65Vfg8TjyNMFI+P20NsZ/WcYSI6kyv1MbbHWtOn7lBUSuXJ6H/+wGQaH410q1Um1h4PqoWxocA==",
+      "sourceRef": "npm:@ai-sdk/mcp@2.0.84",
+      "testRef": "682e2dd71456f14f9da33a1b983d1998c3a1184c",
+      "testRefRelationship": "inventory-snapshot-not-release-verified",
+      "contractFamilies": [],
+      "contractReview": "not-imported; inspect upstream declarations before extraction"
+    }
+  ],
+  "note": "Independent port. Imported test refs and contract review gaps retain their original status; export is not new upstream parity proof.",
+  "canonicalInputs": [
+    {
+      "canonicalPath": ".github/workflows/package-check.yml",
+      "sha256": "7ff448e130f7aed96c38accdf828b6d993997ebc5317358347e9a70a649e67ca"
+    },
+    {
+      "canonicalPath": "LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Package.swift",
+      "sha256": "4cbe86ed75135a6522f6697900e4c09725b01f83edfd9bee19c469254c080e62"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Porting/map.json",
+      "sha256": "789df84cb2c879002f415510a732626cc67e08ed7e54cf01699f965a2277b02e"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/README.md",
+      "sha256": "191cbd2af35112f477f24b2a5fbfce4ba4e4998ebfc2bf35bb7ac9f32a35557b"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPApps.swift",
+      "sha256": "47322141b0bc1929f9a2be7f40d0b151be72a36df90da29999a1d9e0b9264c09"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientActor.swift",
+      "sha256": "9d994fd1da9a554f00dfed3a55432abcab2019402f8014edc1f02e243a8f7ae6"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientHelpers.swift",
+      "sha256": "44b9be51a9e205bc0f41f906ac07de7a10eef4a5ab2ba4326581ed7219124f11"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventAdapter.swift",
+      "sha256": "5e4545c0bc144d45be1800cfc4aaf890d1468581b15b153a84085e5b92827e5b"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventTypes.swift",
+      "sha256": "c83a3ecb946c03f2d0806c2113ec4780a3dfc17be1addb8c45fac1941dda860c"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEventWebhook.swift",
+      "sha256": "452c83e30ee96ecd6c696a8ca5ac2ba06eeeabb8f695d6e21b49dfb2d1ec4fc8"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPEvents.swift",
+      "sha256": "4d41e62ddbc9f1d813fc84fe495db42bb72e7c70ed391dce667965fbfeb164e8"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPHTTPHeaders.swift",
+      "sha256": "c651beafc9829f5ee61bf93db88c7023a91c7e10cef31ab825637444df9a770c"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPHTTPTransport.swift",
+      "sha256": "50943f7aa6eda85d943667dda91742122bb67498c99aec089e9a26f83ace4930"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthDiscovery.swift",
+      "sha256": "b565ceffc7c746ca87c329b966c847d19b44fd330577f8b3db21966020008ab8"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthFlow.swift",
+      "sha256": "ee2e0ab1466b47c0a81680abb06dda8e53d9e8ecfd3427de68b49fda702a7b07"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthHelpers.swift",
+      "sha256": "362eccd0c2a0699ba75fdbb129f556636c6e8655e9debc5b00f1a26a6857057b"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthToken.swift",
+      "sha256": "0c0c933f1d3aca31c5c0e575836c29604a496f9449e2920eaf6f9cf13726bad7"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthTypes.swift",
+      "sha256": "4ac698669b56223bd0360d5baaecb6300af529fe69c1470e2398e407970fa730"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPStdioTransport.swift",
+      "sha256": "f6540ca1ee4ead05b3638cca8dc4fe29491be762ebe8d7466ae0843dd89782a8"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPTypes.swift",
+      "sha256": "9ba0c83b41a259b3affcab48b1e391afa0f68435672ae346f63d3b0d92a2d7f3"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/FixtureDownloadTransport.swift",
+      "sha256": "b72166c1c38d2802e9f183d5d72c7b91d58811d50c7c1eb109a4a5e43b912ff4"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPClientTestSupport.swift",
+      "sha256": "737a5007c543dce76defeb1062413d2e9d8470d8521c601b4d8f600d82d38c18"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPClientTests.swift",
+      "sha256": "43d59fe414ddfe6cf1f382a46224c046a9754a12b88dcf76ef496f868d4e327d"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPHTTPTransportStreamingTests.swift",
+      "sha256": "d4d3b33d1e16fcf7bfcba1665e89d7a09ac0e31555a6e2756b6c11082f61ae0a"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPModernProtocolTests.swift",
+      "sha256": "f036fff80731104081d172813685a12c9643704c46c49278fb9eec91cedb81a6"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPMultiRoundTripTests.swift",
+      "sha256": "a97e5154fab9a889128141fb9d5af332ca66f79fc2adaf5c2e54a8b0732bd2a0"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuth2026Tests.swift",
+      "sha256": "7a6051ab32b823944aadb59f14b65ac73e8af52b25905a3ae23072b421b8f299"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthFlowTests.swift",
+      "sha256": "14f3d27feba9f0623458340d18df8fe735a3e202e63d85a49e11e813c7c64582"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthMigrationTests.swift",
+      "sha256": "19d3ade739c81bf3ea0dfacbf764aeaecae27424e8ae10e91e2c8bcfbf02f018"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthTestSupport.swift",
+      "sha256": "e102a3123830a794fbfe53fd6c6675d1d1aa41709d35ffccace5afa23231e5e4"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuthTests.swift",
+      "sha256": "5ab2ce25584444b39c32019a6f22c20b91ebdc8cd8f1937c366cd9ae9effa814"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPStdioTransportTests.swift",
+      "sha256": "29e6d4a5e7a84a549f449270840ebcd4799d4ac492bcd69e6a2f0103fd183c06"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPUpstream241Tests.swift",
+      "sha256": "5c32eff381d476d1e6f773abdddee44493bceb890da46c2dd766e08d6a3dd684"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/TestSupport.swift",
+      "sha256": "4243e35381720e8d57c74aff2d9351522c7d3c0930ce8ec9b7ec45a6d82aaf5c"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261023Tests.swift",
+      "sha256": "ef2fd3f746441e8b430a239b5d40f4199a57e5fd4764090d4eebd79048c04995"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261025Tests.swift",
+      "sha256": "3a5f7c86a8783e66aef6eacf5cd444e4455aa390a5586167ed4e8df6c315826e"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPCore20261011Tests.swift",
+      "sha256": "e2c19db023e12d69a3805346a3f19440d632505e9a42e60d72a72c83c94ef3e0"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPEvents20261011Tests.swift",
+      "sha256": "ce6755e1941d4bb98e2d0c70a578a239d1983329b535fc960e1e801b0f9aeaf6"
+    }
+  ]
+}

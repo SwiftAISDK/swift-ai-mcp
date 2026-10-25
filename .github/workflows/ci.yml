@@ -1,0 +1,11 @@
+name: Package CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    uses: ./.github/workflows/package-check.yml

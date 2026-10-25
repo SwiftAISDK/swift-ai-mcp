@@ -1,0 +1,24 @@
+name: Standalone Swift package
+on:
+  workflow_call:
+    inputs:
+      package-path:
+        type: string
+        default: .
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test package
+        env:
+          PACKAGE_PATH: ${{ inputs.package-path }}
+        run: |
+          swift --version
+          swift --version | grep -q 'Swift version 6.3.3'
+          swift build --package-path "$PACKAGE_PATH"
+          swift test --package-path "$PACKAGE_PATH" --no-parallel

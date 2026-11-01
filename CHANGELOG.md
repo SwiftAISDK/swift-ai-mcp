@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0
+## 1.1.0
 
-- Extract the existing runtime, typed settings and standalone tests from the compatibility aggregate. Preserve the reviewed npm baseline and existing capability/gap boundaries.
-  Compatibility: Initial independent Swift package version. Existing SwiftAISDK entry points remain in the development compatibility facade; no npm-version equivalence is implied.
+- Align existing native MRTR implementation with published 10 continuation retries and 250ms state-only pacing; remove unpublished 16-input/256KiB-state limits. Retry tools/call, resources/read and prompts/get from original params with fresh IDs and only current-round answers/state; preserve empty state string. Cancellation, close, per-round and total deadlines cover non-cooperative handler waits and prevent late resends; zero timeout prevents first request; processing error retains cause. Modern discovery unsupported-version diagnostic preserves fields and cause without silent downgrade. Stable listPrompts/getPrompt and deprecated experimental forwarding aliases. Reviewed upstream: @ai-sdk/mcp 2.0.84 to 2.0.88. Validation passed: node Scripts/test-packages.mjs (all 52 owning package suites and the compatibility facade); node Scripts/sdk.mjs generate --check; node --test Scripts/tests/*.test.cjs (27 passed); docs-site check and build (100 pages). Live provider calls were not run.
+  Compatibility: Minor release for stable prompt APIs and preserved MCP error causes; deprecated aliases still forward. Core minimum remains 1.0.0. Input-required URL elicitation and sampling remain unsupported, as upstream specifies. Offline fixtures do not prove live service behavior.

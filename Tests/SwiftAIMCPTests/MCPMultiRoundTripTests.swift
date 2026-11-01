@@ -109,7 +109,7 @@ private func mrtrClient(_ transport: MRTRTransport, advertised: Bool = true) asy
     try await client.close()
 }
 
-@Test(arguments: ["unsupported", "malformed", "empty", "url", "many"])
+@Test(arguments: ["unsupported", "malformed", "empty", "url"])
 func mcpMRTRRejectsInvalidOrUnsupportedInputWithoutContinuation(_ mode: String) async throws {
     let transport = MRTRTransport(mode), client = try await mrtrClient(transport)
     await #expect(throws: MCPClientError.self) { try await client.callTool(name: "blocked") }
@@ -117,10 +117,10 @@ func mcpMRTRRejectsInvalidOrUnsupportedInputWithoutContinuation(_ mode: String) 
     try await client.close()
 }
 
-@Test func mcpMRTRRequiresAdvertisedCapabilityAndHandler() async throws {
+@Test func mcpMRTRUsesRegisteredHandlerAndRequiresHandlerForInput() async throws {
     let transport = MRTRTransport(), client = try await mrtrClient(transport, advertised: false)
-    await #expect(throws: MCPClientError.self) { try await client.callTool(name: "blocked") }
-    #expect(await transport.messages().count == 2)
+    _ = try await client.callTool(name: "allowed-with-handler")
+    #expect(await transport.messages().count == 3)
     try await client.close()
     let second = MRTRTransport(), noHandler = try await MCPClient.connect(transport: second, clientCapabilities: ["elicitation": ["form": [:]]])
     await #expect(throws: MCPClientError.self) { try await noHandler.callTool(name: "blocked") }
@@ -131,7 +131,7 @@ func mcpMRTRRejectsInvalidOrUnsupportedInputWithoutContinuation(_ mode: String) 
 @Test func mcpMRTRBoundsRoundsAndDoesNotRetryTransportFailures() async throws {
     let transport = MRTRTransport("forever"), client = try await mrtrClient(transport)
     await #expect(throws: MCPClientError.self) { try await client.callTool(name: "bounded") }
-    #expect(await transport.messages().filter { $0["method"]?.stringValue == "tools/call" }.count == 9)
+    #expect(await transport.messages().filter { $0["method"]?.stringValue == "tools/call" }.count == 11)
     try await client.close()
 }
 

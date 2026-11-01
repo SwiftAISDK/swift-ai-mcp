@@ -260,7 +260,7 @@ private final class MCP2026ErrorRecorder: @unchecked Sendable {
         _ = try await inputClient.listTools()
         Issue.record("Expected input_required to throw.")
     } catch let error as MCPClientError {
-        #expect(error.message.contains("InputRequiredResult is not allowed"))
+        #expect(error.message.contains("Input-required results are not supported for tools/list"))
     }
     try await inputClient.close()
 }

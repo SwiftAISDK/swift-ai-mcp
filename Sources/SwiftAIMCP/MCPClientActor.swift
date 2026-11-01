@@ -45,6 +45,7 @@ public actor MCPClient {
     private let eventOperations: (any MCPEventOperations)?
     private var requestID = 0
     private var isClosed = true
+    private let closeController = AIAbortController()
     private var elicitationRequestHandler: MCPElicitationHandler?
     private var protocolEra: MCPProtocolEra = .legacy
     private var protocolVersion = MCPClient.latestLegacyProtocolVersion
@@ -137,8 +138,9 @@ public actor MCPClient {
     public func close() async throws {
         await transport.setRequestHandler(nil)
         guard !isClosed else { return }
-        try await transport.close()
         isClosed = true
+        closeController.abort(reason: "Connection closed")
+        try await transport.close()
     }
 
     public func listTools(cursor: String? = nil) async throws -> MCPListToolsResult {
@@ -209,7 +211,7 @@ public actor MCPClient {
         return try MCPListResourceTemplatesResult(json: result)
     }
 
-    public func experimentalListPrompts(cursor: String? = nil, options: MCPRequestOptions? = nil) async throws -> MCPListPromptsResult {
+    public func listPrompts(cursor: String? = nil, options: MCPRequestOptions? = nil) async throws -> MCPListPromptsResult {
         let result = try await request(
             method: "prompts/list",
             params: cursor.map { .object(["cursor": .string($0)]) },
@@ -218,7 +220,7 @@ public actor MCPClient {
         return try MCPListPromptsResult(json: result)
     }
 
-    public func experimentalGetPrompt(name: String, arguments: JSONValue = .object([:]), options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
+    public func getPrompt(name: String, arguments: JSONValue = .object([:]), options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
         let result = try await request(
             method: "prompts/get",
             params: .object([
@@ -228,6 +230,16 @@ public actor MCPClient {
             options: options
         )
         return try MCPGetPromptResult(json: result)
+    }
+
+    @available(*, deprecated, renamed: "listPrompts(cursor:options:)")
+    public func experimentalListPrompts(cursor: String? = nil, options: MCPRequestOptions? = nil) async throws -> MCPListPromptsResult {
+        try await listPrompts(cursor: cursor, options: options)
+    }
+
+    @available(*, deprecated, renamed: "getPrompt(name:arguments:options:)")
+    public func experimentalGetPrompt(name: String, arguments: JSONValue = .object([:]), options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
+        try await getPrompt(name: name, arguments: arguments, options: options)
     }
 
     public func complete(
@@ -363,6 +375,13 @@ public actor MCPClient {
             return true
         } catch let error as MCPClientError {
             if let code = error.code, [-32020, -32021, -32022].contains(code) {
+                if code == -32022, let values = error.data?["supported"]?.arrayValue,
+                   values.allSatisfy({ $0.stringValue != nil }) {
+                    let supported = values.compactMap(\.stringValue)
+                    if !supported.contains(protocolVersion), supported.contains(where: { $0 <= Self.latestLegacyProtocolVersion && Self.supportedProtocolVersions.contains($0) }) {
+                        throw MCPClientError(message: "MCP server rejected protocol version \(protocolVersion) during discovery. Server-supported versions: \(supported.joined(separator: ", ")). The client does not automatically switch to legacy initialization after this error. If this is a known legacy server, set protocolVersionDiscovery: false to use initialize.", code: error.code, data: error.data, statusCode: error.statusCode, url: error.url, responseBody: error.responseBody, cause: error)
+                    }
+                }
                 throw error
             }
             return false
@@ -470,66 +489,103 @@ public actor MCPClient {
         if !skipCapabilityCheck {
             try assertCapability(capabilityName(for: method), method: method)
         }
+        let scopedOptions = MCPRequestOptions(
+            abortSignal: mergeAbortSignals(options?.abortSignal, closeController.signal),
+            maxTotalTimeoutMilliseconds: options?.maxTotalTimeoutMilliseconds
+        )
         return try await mcpRunWithRequestOptions(
-            options,
+            scopedOptions,
             timeoutMessage: { timeout in "Request timed out after \(timeout)ms" },
-            abortMessage: "Request was aborted"
+            abortMessage: "Request was aborted",
+            abortError: { [closed = closeController.signal] in MCPClientError(message: closed.isAborted ? "Connection closed" : "Request was aborted") }
         ) { effectiveOptions in
-            try await self.requestRounds(method: method, params: params, options: effectiveOptions)
+            try await self.requestRounds(method: method, params: params, options: effectiveOptions, roundTimeout: options?.timeoutMilliseconds)
         }
     }
 
-    /// MCP 2026 MRTR continuations are protocol requests, not failure retries.
-    /// State and input responses belong only to this invocation, including
-    /// when the actor services another call while waiting for user input.
-    private func requestRounds(method: String, params: JSONValue?, options: MCPRequestOptions) async throws -> JSONValue {
+    private enum InputRound: Sendable {
+        case complete(JSONValue)
+        case next([String: JSONValue])
+    }
+
+    /// Continuations always rebuild from the original request. Answers and
+    /// opaque state from an earlier round never leak into a later one.
+    private func requestRounds(method: String, params: JSONValue?, options: MCPRequestOptions, roundTimeout: Int?) async throws -> JSONValue {
         var nextParams = params?.objectValue ?? [:]
-        for round in 0...8 {
-            try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
-            guard !isClosed else { throw MCPClientError(message: "MCP client closed during request.") }
-            let id = requestID; requestID += 1
-            let prepared = modernRequestParams(from: params == nil && nextParams.isEmpty ? nil : .object(nextParams))
-            let message = JSONValue.object(["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method), "params": prepared])
-            var requestOptions = options
-            requestOptions.transportHeaders = try toolRequestHeaders(method: method, params: prepared)
-            let response = try await transport.request(message, options: requestOptions)
-            let value = try result(from: response, expectedID: id)
-            guard protocolEra == .modern, value["resultType"]?.stringValue == "input_required" else { return value }
-            guard ["tools/call", "resources/read", "prompts/get"].contains(method) else {
-                throw MCPClientError(message: "InputRequiredResult is not allowed for \(method).")
-            }
-            guard round < 8 else { throw MCPClientError(message: "MCP request exceeded its input round limit.") }
-            let state = value["requestState"]
-            guard state == nil || state?.stringValue != nil,
-                  (state?.stringValue?.utf8.count ?? 0) <= 256 * 1024 else { throw MCPClientError(message: "Invalid MCP requestState.") }
-            let input = value["inputRequests"]
-            guard input == nil || input?.objectValue != nil,
-                  input != nil || state != nil else { throw MCPClientError(message: "Invalid MCP InputRequiredResult.") }
-            let requests = input?.objectValue ?? [:]
-            guard requests.count <= 16 else { throw MCPClientError(message: "MCP request exceeded its input request limit.") }
-            // Validate the entire batch before invoking any user callback.
-            for (_, request) in requests {
-                guard request["method"]?.stringValue == "elicitation/create",
-                      request["params"]?.objectValue != nil,
-                      clientCapabilities["elicitation"] != nil,
-                      elicitationRequestHandler != nil else {
-                    throw MCPClientError(message: "Unsupported or unadvertised MCP input request.")
+        for round in 0...10 {
+            let callParams = nextParams
+            let outcome: InputRound
+            do {
+                outcome = try await mcpRunWithRequestOptions(
+                    MCPRequestOptions(abortSignal: options.abortSignal, timeoutMilliseconds: roundTimeout),
+                    timeoutMessage: { "Request timed out after \($0)ms" },
+                    abortMessage: "Request was aborted",
+                    abortError: { [closed = closeController.signal] in MCPClientError(message: closed.isAborted ? "Connection closed" : "Request was aborted") }
+                ) { roundOptions in
+                    try await self.requestRound(method: method, originalParams: params, params: callParams, round: round, options: roundOptions)
                 }
-                let mode = request["params"]?["mode"]?.stringValue ?? "form"
-                guard mode == "form" else { throw MCPClientError(message: "Unsupported MCP elicitation mode: \(mode).") }
+            } catch let error as MCPClientError {
+                throw error
+            } catch {
+                throw MCPClientError(message: "Failed to process server response", cause: error)
             }
-            var answers: [String: JSONValue] = [:]
-            for (key, request) in requests.sorted(by: { $0.key < $1.key }) {
-                try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
-                guard let handler = elicitationRequestHandler else { throw MCPClientError(message: "MCP elicitation handler was removed.") }
-                let result = try await handler(MCPElicitationRequest(params: request["params"]!))
-                try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
-                answers[key] = result.rawValue
+            switch outcome {
+            case let .complete(value): return value
+            case let .next(params): nextParams = params
             }
-            nextParams["inputResponses"] = input == nil ? nil : .object(answers)
-            nextParams["requestState"] = state
         }
-        throw MCPClientError(message: "MCP request exceeded its input round limit.")
+        throw MCPClientError(message: "Request still requires input after 10 rounds")
+    }
+
+    private func requestRound(method: String, originalParams: JSONValue?, params: [String: JSONValue], round: Int, options: MCPRequestOptions) async throws -> InputRound {
+        try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
+        guard !isClosed else { throw MCPClientError(message: "MCP client closed during request.") }
+        let id = requestID; requestID += 1
+        let prepared = modernRequestParams(from: originalParams == nil && params.isEmpty ? nil : .object(params))
+        let message = JSONValue.object(["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method), "params": prepared])
+        var requestOptions = options
+        requestOptions.transportHeaders = try toolRequestHeaders(method: method, params: prepared)
+        let response = try await transport.request(message, options: requestOptions)
+        let value = try result(from: response, expectedID: id)
+        guard protocolEra == .modern, value["resultType"]?.stringValue == "input_required" else { return .complete(value) }
+        guard ["tools/call", "resources/read", "prompts/get"].contains(method) else {
+            throw MCPClientError(message: "Input-required results are not supported for \(method) on protocol \(protocolVersion)")
+        }
+        guard round < 10 else { throw MCPClientError(message: "Request still requires input after 10 rounds") }
+        let state = value["requestState"]
+        let input = value["inputRequests"]
+        guard (state == nil || state?.stringValue != nil), (input == nil || input?.objectValue != nil), input != nil || state != nil else {
+            throw MCPClientError(message: "Failed to process server response: invalid input_required result")
+        }
+        let requests = input?.objectValue ?? [:]
+        var answers: [String: JSONValue] = [:]
+        for (key, request) in requests.sorted(by: { $0.key < $1.key }) {
+            try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
+            let method = request["method"]?.stringValue ?? "unknown"
+            guard method == "elicitation/create", request["params"]?["mode"] == nil || request["params"]?["mode"] == "form" else {
+                throw MCPClientError(message: "Unsupported input request: \(method). Only form elicitation is supported.")
+            }
+            guard let handler = elicitationRequestHandler else {
+                throw MCPClientError(message: "Server requested input, but no handler is registered. Use onElicitationRequest to handle elicitation.")
+            }
+            guard request["params"]?["requestedSchema"]?["type"] == "object" else {
+                throw MCPClientError(message: "Failed to process server response: form requestedSchema must be an object schema")
+            }
+            let answer = try await handler(MCPElicitationRequest(params: request["params"] ?? .object([:])))
+            try Task.checkCancellation(); try options.abortSignal?.throwIfAborted()
+            guard ["accept", "decline", "cancel"].contains(answer.rawValue["action"]?.stringValue ?? ""),
+                  answer.rawValue["content"] == nil || answer.rawValue["content"]?.objectValue != nil else {
+                throw MCPClientError(message: "Failed to process elicitation response")
+            }
+            answers[key] = answer.rawValue
+        }
+        if answers.isEmpty { try await Task.sleep(nanoseconds: 250_000_000) }
+        try options.abortSignal?.throwIfAborted()
+        guard !isClosed else { throw MCPClientError(message: "Connection closed") }
+        var next = originalParams?.objectValue ?? [:]
+        if !answers.isEmpty { next["inputResponses"] = .object(answers) }
+        if let state { next["requestState"] = state }
+        return .next(next)
     }
 
     private func notify(
@@ -783,13 +839,15 @@ private func mcpRunWithRequestOptions<Value: Sendable>(
     _ options: MCPRequestOptions?,
     timeoutMessage: @escaping @Sendable (Int) -> String,
     abortMessage: String,
+    abortError: (@Sendable () -> MCPClientError)? = nil,
     operation: @escaping @Sendable (MCPRequestOptions) async throws -> Value
 ) async throws -> Value {
     let externalSignal = options?.abortSignal
     if externalSignal?.isAborted == true {
-        throw MCPClientError(message: abortMessage)
+        throw abortError?() ?? MCPClientError(message: abortMessage)
     }
     let timeout = options?.effectiveTimeoutMilliseconds
+    if let timeout, timeout <= 0 { throw MCPClientError(message: timeoutMessage(timeout)) }
     guard externalSignal != nil || timeout != nil else {
         return try await operation(options ?? MCPRequestOptions())
     }
@@ -804,7 +862,7 @@ private func mcpRunWithRequestOptions<Value: Sendable>(
     return try await withCheckedThrowingContinuation { continuation in
         let race = MCPRequestRace<Value>(continuation: continuation)
         let abortRegistration = externalSignal?.addAbortHandler { _ in
-            race.resolve(.failure(MCPClientError(message: abortMessage)))
+            race.resolve(.failure(abortError?() ?? MCPClientError(message: abortMessage)))
         }
         let timeoutTask: Task<Void, Never>? = if let timeout, let timeoutController {
             Task {
@@ -826,7 +884,7 @@ private func mcpRunWithRequestOptions<Value: Sendable>(
                 try effectiveOptions.abortSignal?.throwIfAborted()
                 let value = try await operation(effectiveOptions)
                 if externalSignal?.isAborted == true {
-                    race.resolve(.failure(MCPClientError(message: abortMessage)))
+                    race.resolve(.failure(abortError?() ?? MCPClientError(message: abortMessage)))
                 } else if timeoutController?.signal.isAborted == true, let timeout {
                     race.resolve(.failure(MCPClientError(message: timeoutMessage(timeout))))
                 } else {
@@ -834,7 +892,7 @@ private func mcpRunWithRequestOptions<Value: Sendable>(
                 }
             } catch {
                 if externalSignal?.isAborted == true {
-                    race.resolve(.failure(MCPClientError(message: abortMessage)))
+                    race.resolve(.failure(abortError?() ?? MCPClientError(message: abortMessage)))
                 } else if timeoutController?.signal.isAborted == true, let timeout {
                     race.resolve(.failure(MCPClientError(message: timeoutMessage(timeout))))
                 } else {

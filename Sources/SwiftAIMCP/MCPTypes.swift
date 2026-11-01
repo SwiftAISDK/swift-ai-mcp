@@ -12,6 +12,7 @@ public struct MCPClientError: Error, CustomStringConvertible, Sendable {
     public var statusCode: Int?
     public var url: String?
     public var responseBody: String?
+    public var cause: (any Error)?
 
     public init(
         message: String,
@@ -19,7 +20,8 @@ public struct MCPClientError: Error, CustomStringConvertible, Sendable {
         data: JSONValue? = nil,
         statusCode: Int? = nil,
         url: String? = nil,
-        responseBody: String? = nil
+        responseBody: String? = nil,
+        cause: (any Error)? = nil
     ) {
         self.message = message
         self.code = code
@@ -27,6 +29,7 @@ public struct MCPClientError: Error, CustomStringConvertible, Sendable {
         self.statusCode = statusCode
         self.url = url
         self.responseBody = responseBody
+        self.cause = cause
     }
 
     public var description: String {

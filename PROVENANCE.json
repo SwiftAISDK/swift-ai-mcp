@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "package": "swift-ai-mcp",
-  "version": "1.0.0",
-  "releaseID": "modular-3",
+  "version": "1.1.0",
+  "releaseID": "weekly-upstream-20261101",
   "source": {
-    "commit": "7fc9b4cd72f8f83b75ba7eee2e38d37127539317",
-    "baseCommit": "7fc9b4cd72f8f83b75ba7eee2e38d37127539317",
+    "commit": "ea057797494ab9bb66df8c6bfd8edc10245b20e7",
+    "baseCommit": "ea057797494ab9bb66df8c6bfd8edc10245b20e7",
     "workingTree": false,
-    "inputsSHA256": "49b802ba4a30454f78c9886ab3114537ef659ab3e6db7775479b7351f6e3f0ab"
+    "inputsSHA256": "b46f3e07b0a583d6fee81035987d74a06fc5c6109cbdf228144d1172d2c3676e"
   },
   "dependencies": [
     {
@@ -17,25 +17,27 @@
   ],
   "changes": [
     {
-      "id": "remaining-package-extraction",
-      "notes": "Extract the existing runtime, typed settings and standalone tests from the compatibility aggregate. Preserve the reviewed npm baseline and existing capability/gap boundaries.",
-      "compatibility": "Initial independent Swift package version. Existing SwiftAISDK entry points remain in the development compatibility facade; no npm-version equivalence is implied."
+      "id": "weekly-upstream-20261101",
+      "notes": "Align existing native MRTR implementation with published 10 continuation retries and 250ms state-only pacing; remove unpublished 16-input/256KiB-state limits. Retry tools/call, resources/read and prompts/get from original params with fresh IDs and only current-round answers/state; preserve empty state string. Cancellation, close, per-round and total deadlines cover non-cooperative handler waits and prevent late resends; zero timeout prevents first request; processing error retains cause. Modern discovery unsupported-version diagnostic preserves fields and cause without silent downgrade. Stable listPrompts/getPrompt and deprecated experimental forwarding aliases. Reviewed upstream: @ai-sdk/mcp 2.0.84 to 2.0.88. Validation passed: node Scripts/test-packages.mjs (all 52 owning package suites and the compatibility facade); node Scripts/sdk.mjs generate --check; node --test Scripts/tests/*.test.cjs (27 passed); docs-site check and build (100 pages). Live provider calls were not run.",
+      "compatibility": "Minor release for stable prompt APIs and preserved MCP error causes; deprecated aliases still forward. Core minimum remains 1.0.0. Input-required URL elicitation and sampling remain unsupported, as upstream specifies. Offline fixtures do not prove live service behavior."
     }
   ],
   "canonicalDirectory": "Packages/swift-ai-mcp",
   "upstream": [
     {
       "name": "@ai-sdk/mcp",
-      "reviewedVersion": "2.0.84",
+      "reviewedVersion": "2.0.88",
       "ledgerKind": "provider",
-      "evidence": "`MCPClient`, `MCPHTTPTransport`, `MCPStdioTransport`, `MCPApps`, `MCPClientTests.swift`, `MCPOAuthTests.swift`, `MCPStdioTransportTests.swift`, `MCPModernProtocolTests.swift`",
+      "evidence": "`MCPClient`, `MCPHTTPTransport`, `MCPStdioTransport`, `MCPApps`, `MCPClientTests.swift`, `MCPOAuthTests.swift`, `MCPStdioTransportTests.swift`, `MCPModernProtocolTests.swift`; 2026-11-01 delta: Docs/WeeklyUpstreamAudit20261101.json",
       "reviewStatus": "imported-reviewed-with-gaps",
-      "archiveIntegrity": "sha512-yVhkdm1cpN1L65Vfg8TjyNMFI+P20NsZ/WcYSI6kyv1MbbHWtOn7lBUSuXJ6H/+wGQaH410q1Um1h4PqoWxocA==",
-      "sourceRef": "npm:@ai-sdk/mcp@2.0.84",
-      "testRef": "682e2dd71456f14f9da33a1b983d1998c3a1184c",
-      "testRefRelationship": "inventory-snapshot-not-release-verified",
-      "contractFamilies": [],
-      "contractReview": "not-imported; inspect upstream declarations before extraction"
+      "archiveIntegrity": "sha512-4Vn+F0MvRJGt7Dq9Jw4eEdSkRLmtwpN/cXWHKopUzlDztN4AnUehXSFw5NksSPcMWkmvoxNunDBqVLrv/njH1w==",
+      "sourceRef": "npm:@ai-sdk/mcp@2.0.88",
+      "testRef": "9b603d36186b75e58d5479445a96c76f6e2d2700",
+      "testRefRelationship": "matching-release",
+      "contractFamilies": [
+        "MCPClient"
+      ],
+      "contractReview": "2026-11-01: published declarations, source and exact matching-release changed tests reviewed; scoped dispositions and Swift translations are in Docs/WeeklyUpstreamAudit20261101.json. Existing broader product gaps remain; reviewed delta is not full-package parity."
     }
   ],
   "note": "Independent port. Imported test refs and contract review gaps retain their original status; export is not new upstream parity proof.",
@@ -54,7 +56,7 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Porting/map.json",
-      "sha256": "789df84cb2c879002f415510a732626cc67e08ed7e54cf01699f965a2277b02e"
+      "sha256": "6b2777e3a30628078390998f6c390c8c0b0d2652fb1cf7fc241f01a367921f9d"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/README.md",
@@ -66,7 +68,7 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientActor.swift",
-      "sha256": "9d994fd1da9a554f00dfed3a55432abcab2019402f8014edc1f02e243a8f7ae6"
+      "sha256": "f9401d130d1cca87f4f80040807a5557d7ecaab19ba942eb730d89a463cf1485"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPClientHelpers.swift",
@@ -122,7 +124,7 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPTypes.swift",
-      "sha256": "9ba0c83b41a259b3affcab48b1e391afa0f68435672ae346f63d3b0d92a2d7f3"
+      "sha256": "0fe6f4c249f62c37bc1b08de02718bc843e26ded7e673801a35bfdf40d92cb38"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/FixtureDownloadTransport.swift",
@@ -142,11 +144,11 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPModernProtocolTests.swift",
-      "sha256": "f036fff80731104081d172813685a12c9643704c46c49278fb9eec91cedb81a6"
+      "sha256": "2dd14abed68ab727e039072188e56484441820dc859629e5bdcfc4398d73f5c6"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPMultiRoundTripTests.swift",
-      "sha256": "a97e5154fab9a889128141fb9d5af332ca66f79fc2adaf5c2e54a8b0732bd2a0"
+      "sha256": "da25744ef6e6713d59a05a36d0c99623827436171d5cac4cccad575b02f1bb1f"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPOAuth2026Tests.swift",
@@ -179,6 +181,10 @@
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/TestSupport.swift",
       "sha256": "4243e35381720e8d57c74aff2d9351522c7d3c0930ce8ec9b7ec45a6d82aaf5c"
+    },
+    {
+      "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261101MCPTests.swift",
+      "sha256": "1b6707cf4f7e72b866f35f5b17e72663f9dade2674be7be09df4dac09f6db830"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261023Tests.swift",

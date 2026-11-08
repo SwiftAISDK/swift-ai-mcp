@@ -1,5 +1,5 @@
 <!-- Generated distribution; edit the canonical repository. -->
-# swift-ai-mcp 1.1.0
+# swift-ai-mcp 1.1.1
 
 Independent Swift-native port of Vercel AI SDK. Source and upstream dispositions are in PROVENANCE.json and Porting/.
 
@@ -8,7 +8,7 @@ Independent Swift-native port of Vercel AI SDK. Source and upstream dispositions
 Add this package to your SwiftPM dependencies:
 
 ```swift
-.package(url: "https://github.com/SwiftAISDK/swift-ai-mcp.git", from: "1.1.0")
+.package(url: "https://github.com/SwiftAISDK/swift-ai-mcp.git", from: "1.1.1")
 ```
 
 Products: `SwiftAIMCP`.
@@ -28,3 +28,6 @@ not import MCP. Stdio remains limited to the supported host platforms.
 Run `swift test --package-path Packages/swift-ai-mcp` in the canonical checkout.
 Runtime and translated tests follow the versions and gaps in `Porting/map.json`
 and the canonical version ledger. Distribution manifests are catalog-generated.
+## Behavior notes
+
+OAuth discovery rejects HTTPS-to-HTTP redirects before another request. OAuth requests always include a resource: the canonical server URL with its fragment removed is the fallback when custom validation returns nil. A stored refresh token needs its original authorization-server binding; an unbound token must be cleared before dynamic client registration can save a new binding.

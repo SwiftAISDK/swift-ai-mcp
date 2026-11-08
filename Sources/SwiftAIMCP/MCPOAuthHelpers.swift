@@ -53,6 +53,7 @@ func resourceURLStripSlash(_ resource: URL) -> String {
 func resourceURLFromServerURL(_ url: URL) -> URL {
     var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
     components?.fragment = nil
+    if components?.path.isEmpty == true { components?.path = "/" }
     return components?.url ?? url
 }
 

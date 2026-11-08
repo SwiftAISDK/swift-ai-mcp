@@ -76,6 +76,7 @@ actor TestOAuthClientProvider: MCPOAuthClientProvider {
     private var validatedAuthorizationServerURLValues: [(serverURL: URL, authorizationServerURL: URL)] = []
     private let customAuthentication: MCPOAuthClientAuthenticationHandler?
     private let customAuthorizationServerValidator: (@Sendable (URL, URL) async throws -> Void)?
+    private let invalidationClearsTokens: Bool
 
     init(
         redirectURL: URL = URL(string: "http://localhost:3000/callback")!,
@@ -92,7 +93,8 @@ actor TestOAuthClientProvider: MCPOAuthClientProvider {
         storedState: String? = nil,
         supportsDynamicClientRegistration: Bool = false,
         customAuthentication: MCPOAuthClientAuthenticationHandler? = nil,
-        customAuthorizationServerValidator: (@Sendable (URL, URL) async throws -> Void)? = nil
+        customAuthorizationServerValidator: (@Sendable (URL, URL) async throws -> Void)? = nil,
+        invalidationClearsTokens: Bool = true
     ) {
         self.redirectURL = redirectURL
         self.clientMetadata = clientMetadata
@@ -106,6 +108,7 @@ actor TestOAuthClientProvider: MCPOAuthClientProvider {
         self.customAuthentication = customAuthentication
         self.usesCustomClientAuthentication = customAuthentication != nil
         self.customAuthorizationServerValidator = customAuthorizationServerValidator
+        self.invalidationClearsTokens = invalidationClearsTokens
     }
 
     func tokens() async throws -> MCPOAuthTokens? {
@@ -132,7 +135,7 @@ actor TestOAuthClientProvider: MCPOAuthClientProvider {
 
     func invalidateCredentials(_ scope: MCPOAuthCredentialScope) async {
         invalidationValues.append(scope)
-        if scope == .all || scope == .tokens {
+        if invalidationClearsTokens && (scope == .all || scope == .tokens) {
             currentTokens = nil
         }
         if scope == .all || scope == .client {

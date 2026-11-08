@@ -96,19 +96,10 @@ public enum MCPOAuth {
         resourceMetadata: MCPOAuthProtectedResourceMetadata?
     ) async throws -> URL? {
         let defaultResource = resourceURLFromServerURL(serverURL)
-        if let validated = try await provider.validateResourceURL(
+        return try await provider.validateResourceURL(
             serverURL: defaultResource,
             resource: resourceMetadata?.resource
-        ) {
-            return validated
-        }
-        guard let resourceMetadata else { return nil }
-        guard checkResourceAllowed(requestedResource: defaultResource, configuredResource: resourceMetadata.resource) else {
-            throw MCPClientError(
-                message: "Protected resource \(resourceMetadata.resource.absoluteString) does not match expected \(defaultResource.absoluteString) (or origin)"
-            )
-        }
-        return resourceMetadata.resource
+        ) ?? defaultResource
     }
 
     public static func startAuthorization(
@@ -416,6 +407,23 @@ private func authInternal(
             throw MCPOAuthAuthorizationServerMismatchError(message: "OAuth client credentials must be bound to an authorization server: configure their issuer or store authorization server information")
         }
     }
+    // Bind the original refresh token before registration can create a new pin.
+    let refreshAuthorizationServerInformation: MCPOAuthAuthorizationServerInformation?
+    if let currentTokens, currentTokens.refreshToken != nil {
+        refreshAuthorizationServerInformation = try await storedAuthorizationServerInformation(
+            provider: provider, clientInformation: clientInformation, tokens: currentTokens
+        )
+        if let refreshAuthorizationServerInformation {
+            try assertAuthorizationServerInformationMatches(refreshAuthorizationServerInformation, currentAuthorizationServerInformation)
+        } else {
+            await provider.invalidateCredentials(.tokens, context: MCPOAuthCredentialInvalidationContext(tokens: currentTokens))
+            if try await provider.tokens()?.refreshToken != nil {
+                throw MCPClientError(message: "Stored OAuth tokens without an authorization server binding must be cleared before starting authorization")
+            }
+        }
+    } else {
+        refreshAuthorizationServerInformation = nil
+    }
     if clientInformation == nil {
         if authorizationCode != nil {
             throw MCPClientError(message: "Existing OAuth client information is required when exchanging an authorization code")
@@ -471,29 +479,22 @@ private func authInternal(
         return .authorized
     }
 
-    if let currentTokens, let refreshToken = currentTokens.refreshToken {
-        if let storedAuthorizationServerInformation = try await storedAuthorizationServerInformation(provider: provider, clientInformation: clientInformation, tokens: currentTokens) {
-            try assertAuthorizationServerInformationMatches(storedAuthorizationServerInformation, currentAuthorizationServerInformation)
-        } else {
-            await provider.invalidateCredentials(.tokens, context: MCPOAuthCredentialInvalidationContext(tokens: currentTokens))
-        }
+    if let currentTokens, let refreshToken = currentTokens.refreshToken, refreshAuthorizationServerInformation != nil {
         do {
-            if try await storedAuthorizationServerInformation(provider: provider, clientInformation: clientInformation, tokens: currentTokens) != nil {
-                await refreshAttempt?.record(currentTokens)
-                let tokens = try await MCPOAuth.refreshAuthorization(
-                    authorizationServerURL: resolvedAuthorizationServerURL,
-                    metadata: metadata,
-                    clientInformation: clientInformation,
-                    refreshToken: refreshToken,
-                    resource: resource,
-                    clientAuthentication: { request in
-                        try await provider.authenticateTokenRequest(request)
-                    },
-                    transport: transport
-                )
-                try await provider.saveTokens(tokens.withAuthorizationServerInformation(currentAuthorizationServerInformation))
-                return .authorized
-            }
+            await refreshAttempt?.record(currentTokens)
+            let tokens = try await MCPOAuth.refreshAuthorization(
+                authorizationServerURL: resolvedAuthorizationServerURL,
+                metadata: metadata,
+                clientInformation: clientInformation,
+                refreshToken: refreshToken,
+                resource: resource,
+                clientAuthentication: { request in
+                    try await provider.authenticateTokenRequest(request)
+                },
+                transport: transport
+            )
+            try await provider.saveTokens(tokens.withAuthorizationServerInformation(currentAuthorizationServerInformation))
+            return .authorized
         } catch let error as MCPOAuthServerError {
             if let code = error.code, code != "server_error" {
                 throw error
@@ -548,7 +549,7 @@ private func mcpOAuthAuthorizationServerInformation(
 
 private func storedAuthorizationServerInformation(
     provider: any MCPOAuthClientProvider,
-    clientInformation: MCPOAuthClientInformation,
+    clientInformation: MCPOAuthClientInformation?,
     tokens: MCPOAuthTokens? = nil
 ) async throws -> MCPOAuthAuthorizationServerInformation? {
     if let information = tokens?.authorizationServerInformation {
@@ -557,7 +558,7 @@ private func storedAuthorizationServerInformation(
     if let information = try await provider.authorizationServerInformation() {
         return information.normalized
     }
-    return clientInformation.authorizationServerInformation
+    return clientInformation?.authorizationServerInformation
 }
 
 private func saveAuthorizationServerInformation(

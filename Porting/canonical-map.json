@@ -67,6 +67,7 @@
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPUpstream241Tests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/TestSupport.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261101MCPTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261108OAuthTests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261023Tests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261025Tests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPCore20261011Tests.swift",
@@ -84,5 +85,5 @@
       "reason": "2026-11-01 reviewed 2.0.84 -> 2.0.88 from SRI/SHA256-verified published archives and matching-release tests 612be2311464804d1e4897afacbf8f3fc2f6d9e3 -> 9b603d36186b75e58d5479445a96c76f6e2d2700. Ported stable prompt APIs, diagnostic cause preservation and current MRTR semantics: 10 retries, 250ms state-only pacing, original/current-round params, empty state, cancellation/close/timeout coverage and no late resend. Foundation has no global fetch receiver issue; stable native MCPStdioTransport export already covers export intent. Form-only elicitation matches upstream; no broader MCP parity claim."
     }
   ],
-  "reviewNote": "M6: MCP runtime, OAuth, event adapters, app metadata and focused tests extracted unchanged. Tool bridging depends on the high-level SwiftAI module; core has no MCP dependency. Mixed core/MCP integration tests and their shared support remain in the root workspace. 2026-11-01 reviewed 2.0.84 -> 2.0.88 from SRI/SHA256-verified published archives and matching-release tests 612be2311464804d1e4897afacbf8f3fc2f6d9e3 -> 9b603d36186b75e58d5479445a96c76f6e2d2700. Ported stable prompt APIs, diagnostic cause preservation and current MRTR semantics: 10 retries, 250ms state-only pacing, original/current-round params, empty state, cancellation/close/timeout coverage and no late resend. Foundation has no global fetch receiver issue; stable native MCPStdioTransport export already covers export intent. Form-only elicitation matches upstream; no broader MCP parity claim."
+  "reviewNote": "2026-11-08: published @ai-sdk/mcp 2.0.88..2.0.93 source, declarations and matching-release tests reviewed independently. Canonical resource fallback, pre-registration refresh-token binding, and secure OAuth discovery redirects. Delta review is not a claim of whole-provider parity; existing documented gaps remain."
 }

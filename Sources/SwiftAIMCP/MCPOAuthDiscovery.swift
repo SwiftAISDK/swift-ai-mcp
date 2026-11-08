@@ -156,6 +156,7 @@ func discoveryGET(
            let location = response.headerValue("location"),
            let nextURL = URL(string: location, relativeTo: currentURL)?.absoluteURL {
             try assertSafeMCPOAuthEndpoint(nextURL, trustedOrigin: trustedOrigin)
+            try assertMCPOAuthRedirectDoesNotDowngrade(from: currentURL, to: nextURL)
             if !isSameOrigin(currentURL.absoluteString, nextURL.absoluteString) {
                 // Protocol metadata is safe on the untrusted first hop, but
                 // follows provider-utils by withholding it after a redirect
@@ -167,10 +168,17 @@ func discoveryGET(
         }
         if let finalURL = response.url, finalURL != currentURL {
             try assertSafeMCPOAuthEndpoint(finalURL, trustedOrigin: trustedOrigin)
+            try assertMCPOAuthRedirectDoesNotDowngrade(from: currentURL, to: finalURL)
         }
         return response
     }
     throw MCPClientError(message: "Too many OAuth discovery redirects (max 10).")
+}
+
+private func assertMCPOAuthRedirectDoesNotDowngrade(from source: URL, to destination: URL) throws {
+    if source.scheme?.lowercased() == "https", destination.scheme?.lowercased() == "http" {
+        throw MCPClientError(message: "Redirect from HTTPS to HTTP was blocked")
+    }
 }
 
 func discoveryGETWithHeaderRetry(

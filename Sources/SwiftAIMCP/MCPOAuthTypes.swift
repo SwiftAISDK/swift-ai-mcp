@@ -519,7 +519,14 @@ public extension MCPOAuthClientProvider {
     func state() async throws -> String? { nil }
     func saveState(_ state: String) async throws {}
     func storedState() async throws -> String? { nil }
-    func validateResourceURL(serverURL: URL, resource: URL?) async throws -> URL? { nil }
+    /// Override to select a custom resource; nil selects the canonical server URL.
+    func validateResourceURL(serverURL: URL, resource: URL?) async throws -> URL? {
+        guard let resource else { return serverURL }
+        guard checkResourceAllowed(requestedResource: serverURL, configuredResource: resource) else {
+            throw MCPClientError(message: "Protected resource \(resource.absoluteString) does not match expected \(serverURL.absoluteString) (or origin)")
+        }
+        return resource
+    }
     func validateAuthorizationServerURL(serverURL: URL, authorizationServerURL: URL) async throws {}
     func authenticateTokenRequest(_ request: MCPOAuthClientAuthenticationRequest) async throws -> MCPOAuthClientAuthenticationRequest? { nil }
 }

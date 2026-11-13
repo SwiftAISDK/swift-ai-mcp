@@ -12,6 +12,7 @@ func tokenRequest(
     metadata: MCPOAuthAuthorizationServerMetadata?,
     parameters: [URLQueryItem],
     clientAuthentication: MCPOAuthClientAuthenticationHandler?,
+    trustedOrigin: URL?,
     transport: any AITransport
 ) async throws -> AIHTTPResponse {
     var headers = [
@@ -40,13 +41,13 @@ func tokenRequest(
             parameters: &parameters
         )
     }
-    let response = try await transport.send(AIHTTPRequest(
+    let response = try await sendMCPOAuthEndpoint(AIHTTPRequest(
         method: "POST",
         url: url,
         headers: headers,
         body: Data(formEncoded(parameters).utf8),
         followRedirects: false
-    ))
+    ), trustedOrigin: trustedOrigin, transport: transport)
     try throwOAuthServerErrorIfNeeded(response)
     return response
 }

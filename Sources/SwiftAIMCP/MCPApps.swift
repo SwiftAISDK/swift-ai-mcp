@@ -104,7 +104,7 @@ public enum MCPApps {
         return MCPAppResource(
             uri: uri,
             html: html,
-            metadata: content.rawValue["_meta"]?["ui"] ?? content.rawValue["_meta"]
+            metadata: normalizedAppMetadata(content.rawValue["_meta"]?["ui"] ?? content.rawValue["_meta"])
         )
     }
 
@@ -156,4 +156,17 @@ public struct MCPAppResource: Equatable, Hashable, Sendable {
         self.html = html
         self.metadata = metadata
     }
+}
+private func normalizedAppMetadata(_ metadata: JSONValue?) -> JSONValue? {
+    guard var object = metadata?.objectValue else { return metadata }
+    if var csp = object["csp"]?.objectValue {
+        for key in ["connectDomains", "resourceDomains", "frameDomains", "baseUriDomains"] {
+            if let value = csp[key] {
+                if let array = value.arrayValue { csp[key] = .array(array.compactMap { $0.stringValue.map(JSONValue.string) }) }
+                else { csp.removeValue(forKey: key) }
+            }
+        }
+        object["csp"] = .object(csp)
+    }
+    return .object(object)
 }

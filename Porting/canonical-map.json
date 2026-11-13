@@ -9,6 +9,7 @@
         "packages/mcp/src"
       ],
       "tests": [
+        "packages/mcp/src/index.test-d.ts",
         "packages/mcp/src/index.test.ts",
         "packages/mcp/src/tool/json-rpc-message.test.ts",
         "packages/mcp/src/tool/mcp-app-fingerprint.test.ts",
@@ -26,6 +27,7 @@
         "packages/mcp/src/tool/mcp-stdio/get-environment.test.ts",
         "packages/mcp/src/tool/mcp-stdio/mcp-stdio-transport.test.ts",
         "packages/mcp/src/tool/oauth-credential-invalidation.test.ts",
+        "packages/mcp/src/tool/oauth-discovery-runtime.test.ts",
         "packages/mcp/src/tool/oauth.test.ts",
         "packages/mcp/src/tool/types.test.ts",
         "packages/mcp/src/util/oauth.util.test.ts"
@@ -68,6 +70,7 @@
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/TestSupport.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261101MCPTests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261108OAuthTests.swift",
+      "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/Weekly20261114MCPTests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261023Tests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCP20261025Tests.swift",
       "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/WeeklyMCPCore20261011Tests.swift",
@@ -83,7 +86,11 @@
     {
       "kind": "native-adaptation",
       "reason": "2026-11-01 reviewed 2.0.84 -> 2.0.88 from SRI/SHA256-verified published archives and matching-release tests 612be2311464804d1e4897afacbf8f3fc2f6d9e3 -> 9b603d36186b75e58d5479445a96c76f6e2d2700. Ported stable prompt APIs, diagnostic cause preservation and current MRTR semantics: 10 retries, 250ms state-only pacing, original/current-round params, empty state, cancellation/close/timeout coverage and no late resend. Foundation has no global fetch receiver issue; stable native MCPStdioTransport export already covers export intent. Form-only elicitation matches upstream; no broader MCP parity claim."
+    },
+    {
+      "kind": "native-adaptation",
+      "reason": "2026-11-14: Swift retains native connection-time DNS pinning for untrusted downloads. The upstream Node/Undici removal does not weaken this native transport. Explicit custom OAuth transports carry responsibility for connect-time DNS validation; native URLSession token/registration requests outside configured trust require a protected custom transport. JS Symbols/property descriptors, Zod/TypeScript inference, browser workers and workflow serialization are not native product surfaces."
     }
   ],
-  "reviewNote": "2026-11-08: published @ai-sdk/mcp 2.0.88..2.0.93 source, declarations and matching-release tests reviewed independently. Canonical resource fallback, pre-registration refresh-token binding, and secure OAuth discovery redirects. Delta review is not a claim of whole-provider parity; existing documented gaps remain."
+  "reviewNote": "2026-11-14: published old/latest source and declarations plus exact matching-release changed tests reviewed independently. Core Extraction V4, explicit URL download hooks, incremental array snapshots and provider-owned telemetry views; MCP discovery network-error propagation, baseUriDomains and strict OAuth endpoint trust. See Docs/WeeklyUpstreamAudit20261114.json for per-package/per-file dispositions. Existing broader product gaps remain; delta review is not full-package or live-service parity."
 }

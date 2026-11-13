@@ -189,12 +189,27 @@ public enum MCPOAuth {
         clientAuthentication: MCPOAuthClientAuthenticationHandler? = nil,
         transport: any AITransport = URLSessionTransport.shared
     ) async throws -> MCPOAuthTokens {
+        try await exchangeAuthorization(authorizationServerURL: authorizationServerURL, metadata: metadata, clientInformation: clientInformation, authorizationCode: authorizationCode, codeVerifier: codeVerifier, redirectURI: redirectURI, resource: resource, clientAuthentication: clientAuthentication, trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL), transport: transport)
+    }
+
+    public static func exchangeAuthorization(
+        authorizationServerURL: URL,
+        metadata: MCPOAuthAuthorizationServerMetadata? = nil,
+        clientInformation: MCPOAuthClientInformation,
+        authorizationCode: String,
+        codeVerifier: String,
+        redirectURI: URL,
+        resource: URL? = nil,
+        clientAuthentication: MCPOAuthClientAuthenticationHandler? = nil,
+        trustedOrigin: URL?,
+        transport: any AITransport = URLSessionTransport.shared
+    ) async throws -> MCPOAuthTokens {
         let grantType = "authorization_code"
         try validateGrantType(grantType, metadata: metadata)
         let tokenURL = metadata?.tokenEndpoint ?? (URL(string: "/token", relativeTo: authorizationServerURL)?.absoluteURL ?? authorizationServerURL)
         try assertSafeMCPOAuthEndpoint(
             tokenURL,
-            trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL)
+            trustedOrigin: trustedOrigin
         )
         var parameters = [
             URLQueryItem(name: "grant_type", value: grantType),
@@ -212,6 +227,7 @@ public enum MCPOAuth {
             metadata: metadata,
             parameters: parameters,
             clientAuthentication: clientAuthentication,
+            trustedOrigin: trustedOrigin,
             transport: transport
         )
         return try MCPOAuthTokens(json: response.jsonValue())
@@ -226,12 +242,25 @@ public enum MCPOAuth {
         clientAuthentication: MCPOAuthClientAuthenticationHandler? = nil,
         transport: any AITransport = URLSessionTransport.shared
     ) async throws -> MCPOAuthTokens {
+        try await refreshAuthorization(authorizationServerURL: authorizationServerURL, metadata: metadata, clientInformation: clientInformation, refreshToken: refreshToken, resource: resource, clientAuthentication: clientAuthentication, trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL), transport: transport)
+    }
+
+    public static func refreshAuthorization(
+        authorizationServerURL: URL,
+        metadata: MCPOAuthAuthorizationServerMetadata? = nil,
+        clientInformation: MCPOAuthClientInformation,
+        refreshToken: String,
+        resource: URL? = nil,
+        clientAuthentication: MCPOAuthClientAuthenticationHandler? = nil,
+        trustedOrigin: URL?,
+        transport: any AITransport = URLSessionTransport.shared
+    ) async throws -> MCPOAuthTokens {
         let grantType = "refresh_token"
         try validateGrantType(grantType, metadata: metadata)
         let tokenURL = metadata?.tokenEndpoint ?? (URL(string: "/token", relativeTo: authorizationServerURL)?.absoluteURL ?? authorizationServerURL)
         try assertSafeMCPOAuthEndpoint(
             tokenURL,
-            trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL)
+            trustedOrigin: trustedOrigin
         )
         var parameters = [
             URLQueryItem(name: "grant_type", value: grantType),
@@ -247,6 +276,7 @@ public enum MCPOAuth {
             metadata: metadata,
             parameters: parameters,
             clientAuthentication: clientAuthentication,
+            trustedOrigin: trustedOrigin,
             transport: transport
         )
         var raw = try response.jsonValue()
@@ -263,6 +293,16 @@ public enum MCPOAuth {
         clientMetadata: MCPOAuthClientMetadata,
         transport: any AITransport = URLSessionTransport.shared
     ) async throws -> MCPOAuthClientInformationFull {
+        try await registerClient(authorizationServerURL: authorizationServerURL, metadata: metadata, clientMetadata: clientMetadata, trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL), transport: transport)
+    }
+
+    public static func registerClient(
+        authorizationServerURL: URL,
+        metadata: MCPOAuthAuthorizationServerMetadata? = nil,
+        clientMetadata: MCPOAuthClientMetadata,
+        trustedOrigin: URL?,
+        transport: any AITransport = URLSessionTransport.shared
+    ) async throws -> MCPOAuthClientInformationFull {
         let registrationURL: URL
         if let metadata {
             guard let endpoint = metadata.registrationEndpoint else {
@@ -274,20 +314,20 @@ public enum MCPOAuth {
         }
         try assertSafeMCPOAuthEndpoint(
             registrationURL,
-            trustedOrigin: trustedMCPOAuthCredentialOrigin(authorizationServerURL)
+            trustedOrigin: trustedOrigin
         )
         var registrationMetadata = clientMetadata.jsonValue.objectValue ?? [:]
         registrationMetadata["application_type"] = .string(
             (clientMetadata.applicationType ?? inferMCPOAuthApplicationType(clientMetadata.redirectURIs)).rawValue
         )
         let body = try JSONEncoder().encode(JSONValue.object(registrationMetadata))
-        let response = try await transport.send(AIHTTPRequest(
+        let response = try await sendMCPOAuthEndpoint(AIHTTPRequest(
             method: "POST",
             url: registrationURL,
             headers: ["Content-Type": "application/json"],
             body: body,
             followRedirects: false
-        ))
+        ), trustedOrigin: trustedOrigin, transport: transport)
         try throwOAuthServerErrorIfNeeded(response)
         return try MCPOAuthClientInformationFull(json: response.jsonValue())
     }
@@ -437,6 +477,7 @@ private func authInternal(
             authorizationServerURL: resolvedAuthorizationServerURL,
             metadata: metadata,
             clientMetadata: clientMetadata,
+            trustedOrigin: trustedAuthorizationOrigin,
             transport: transport
         )
         let pinnedClientInformation = fullInformation.clientInformation.withAuthorizationServerInformation(currentAuthorizationServerInformation)
@@ -473,6 +514,7 @@ private func authInternal(
             clientAuthentication: { request in
                 try await provider.authenticateTokenRequest(request)
             },
+            trustedOrigin: trustedAuthorizationOrigin,
             transport: transport
         )
         try await provider.saveTokens(tokens.withAuthorizationServerInformation(currentAuthorizationServerInformation))
@@ -491,7 +533,8 @@ private func authInternal(
                 clientAuthentication: { request in
                     try await provider.authenticateTokenRequest(request)
                 },
-                transport: transport
+                trustedOrigin: trustedAuthorizationOrigin,
+            transport: transport
             )
             try await provider.saveTokens(tokens.withAuthorizationServerInformation(currentAuthorizationServerInformation))
             return .authorized

@@ -77,11 +77,11 @@ public struct MCPOAuthDiscovery {
         )
     }
 
-    static func discoverAuthorizationServerMetadata(
+    public static func discoverAuthorizationServerMetadata(
         authorizationServerURL: URL,
-        protocolVersion: String,
+        protocolVersion: String = MCPClient.latestProtocolVersion,
         trustedOrigin: URL?,
-        transport: any AITransport
+        transport: any AITransport = URLSessionTransport.shared
     ) async throws -> MCPOAuthAuthorizationServerMetadata? {
         try assertSafeMCPOAuthEndpoint(authorizationServerURL, trustedOrigin: trustedOrigin)
         for discoveryURL in mcpAuthorizationServerDiscoveryURLs(authorizationServerURL) {
@@ -146,12 +146,12 @@ func discoveryGET(
     let redirectStatuses: Set<Int> = [301, 302, 303, 307, 308]
     for _ in 0...10 {
         try assertSafeMCPOAuthEndpoint(currentURL, trustedOrigin: trustedOrigin)
-        let response = try await transport.send(AIHTTPRequest(
+        let response = try await sendMCPOAuthEndpoint(AIHTTPRequest(
             method: "GET",
             url: currentURL,
             headers: headers,
             followRedirects: false
-        ))
+        ), trustedOrigin: trustedOrigin, transport: transport)
         if redirectStatuses.contains(response.statusCode),
            let location = response.headerValue("location"),
            let nextURL = URL(string: location, relativeTo: currentURL)?.absoluteURL {

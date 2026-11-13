@@ -386,6 +386,7 @@ public actor MCPClient {
             }
             return false
         } catch {
+            if transport.waitsForProtocolVersionDiscovery { throw error }
             return false
         }
     }
@@ -527,6 +528,7 @@ public actor MCPClient {
             } catch let error as MCPClientError {
                 throw error
             } catch {
+                if method == "server/discover", transport.waitsForProtocolVersionDiscovery { throw error }
                 throw MCPClientError(message: "Failed to process server response", cause: error)
             }
             switch outcome {

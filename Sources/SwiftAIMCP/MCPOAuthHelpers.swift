@@ -126,3 +126,22 @@ extension Array where Element == URLQueryItem {
         append(URLQueryItem(name: name, value: value))
     }
 }
+
+/// Configured endpoints retain their trust. Metadata-derived URLs require the
+/// native DNS-pinned GET path or an explicitly supplied protected transport.
+func sendMCPOAuthEndpoint(_ request: AIHTTPRequest, trustedOrigin: URL?, transport: any AITransport) async throws -> AIHTTPResponse {
+    try assertSafeMCPOAuthEndpoint(request.url, trustedOrigin: trustedOrigin)
+    if let trustedOrigin, isSameOrigin(request.url.absoluteString, trustedOrigin.absoluteString) {
+        return try await transport.send(request)
+    }
+    guard transport is URLSessionTransport else {
+        // Like an explicit upstream fetch, this is the caller's connect-time
+        // DNS-validation boundary; custom transports must enforce that policy.
+        return try await transport.send(request)
+    }
+    guard request.method == "GET" else {
+        throw MCPClientError(message: "Untrusted OAuth token and registration endpoints require a custom transport with connect-time DNS validation.")
+    }
+    do { return try await transport.sendValidatedDownload(request) }
+    catch { throw MCPClientError(message: "OAuth discovery requires a DNS-pinned transport: \(String(describing: error))", cause: error) }
+}

@@ -16,7 +16,8 @@ import Testing
     ])
     let transport = try MCPHTTPTransport(
         url: "https://mcp.example.com/messages",
-        transport: http
+        transport: http,
+        initialProtocolVersion: MCPClient.latestLegacyProtocolVersion
     )
 
     do {
@@ -27,7 +28,7 @@ import Testing
         ])
         Issue.record("Expected the unsuccessful MCP POST response to reject.")
     } catch let error as MCPClientError {
-        #expect(error.message == "MCP HTTP Transport Error: POST https://mcp.example.com/messages failed with HTTP 500: Internal Server Error")
+        #expect(error.message == "MCP HTTP Transport Error: POSTing to endpoint (HTTP 500): Internal Server Error")
         #expect(error.statusCode == 500)
         #expect(error.url == "https://mcp.example.com/messages")
         #expect(error.responseBody == "Internal Server Error")
@@ -48,7 +49,7 @@ import Testing
         ),
         AIHTTPResponse(statusCode: 202)
     ])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
     await transport.setRequestHandler { request in
         [
             "jsonrpc": "2.0",
@@ -76,7 +77,7 @@ import Testing
             finishes: false
         )
     ])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
 
     let response = try await transport.request([
         "jsonrpc": "2.0",
@@ -110,7 +111,7 @@ import Testing
         }
     )
     let http = StreamingRecordingTransport(responses: [response])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
 
     let result = try await transport.request([
         "jsonrpc": "2.0",
@@ -130,7 +131,7 @@ import Testing
         ),
         streamResponse(statusCode: 202)
     ])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
     await transport.setRequestHandler { request in
         [
             "jsonrpc": "2.0",
@@ -168,6 +169,7 @@ import Testing
     let transport = try MCPHTTPTransport(
         url: "https://mcp.example.com/rpc",
         transport: http,
+        initialProtocolVersion: MCPClient.latestLegacyProtocolVersion,
         inboundReconnectDelayNanoseconds: 1_000_000
     )
     await transport.setRequestHandler { request in
@@ -207,7 +209,8 @@ func mcpHTTPTransportSharesOneRefreshForConcurrentAndLateStale401s(
     let transport = try MCPHTTPTransport(
         url: "https://mcp.example.com/rpc",
         transport: http,
-        authProvider: auth
+        authProvider: auth,
+        initialProtocolVersion: MCPClient.latestLegacyProtocolVersion
     )
 
     async let first = transport.request([

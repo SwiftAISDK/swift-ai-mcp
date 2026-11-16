@@ -121,9 +121,18 @@ extension String {
 
 
 extension Array where Element == URLQueryItem {
+    /// `URLSearchParams.set`: replaces the first entry in place, removes
+    /// later duplicates and appends only when the name is new.
     mutating func set(name: String, value: String) {
-        removeAll { $0.name == name }
-        append(URLQueryItem(name: name, value: value))
+        guard let index = firstIndex(where: { $0.name == name }) else {
+            append(URLQueryItem(name: name, value: value))
+            return
+        }
+        self[index] = URLQueryItem(name: name, value: value)
+        var position = index + 1
+        while position < count {
+            if self[position].name == name { remove(at: position) } else { position += 1 }
+        }
     }
 }
 

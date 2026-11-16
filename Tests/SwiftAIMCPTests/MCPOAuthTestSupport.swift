@@ -255,8 +255,9 @@ func formItems(_ request: AIHTTPRequest) throws -> [String: String] {
     let body = String(data: try #require(request.body), encoding: .utf8) ?? ""
     return Dictionary(uniqueKeysWithValues: body.split(separator: "&").map { pair in
         let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
-        let name = parts[0].removingPercentEncoding ?? parts[0]
-        let value = parts.count > 1 ? (parts[1].removingPercentEncoding ?? parts[1]) : ""
+        let decode = { (text: String) in text.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? text }
+        let name = decode(parts[0])
+        let value = parts.count > 1 ? decode(parts[1]) : ""
         return (name, value)
     })
 }

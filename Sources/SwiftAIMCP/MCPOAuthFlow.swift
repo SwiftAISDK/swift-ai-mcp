@@ -137,10 +137,11 @@ public enum MCPOAuth {
         queryItems.set(name: "code_challenge", value: challenge)
         queryItems.set(name: "code_challenge_method", value: codeChallengeMethod)
         queryItems.set(name: "redirect_uri", value: redirectURL.absoluteString)
-        if let state {
+        // Upstream skips empty `state`/`scope` values (JavaScript truthiness).
+        if let state, !state.isEmpty {
             queryItems.set(name: "state", value: state)
         }
-        if let scope {
+        if let scope, !scope.isEmpty {
             queryItems.set(name: "scope", value: scope)
             if scope.contains("offline_access") {
                 queryItems.append(URLQueryItem(name: "prompt", value: "consent"))
@@ -211,15 +212,12 @@ public enum MCPOAuth {
             tokenURL,
             trustedOrigin: trustedOrigin
         )
-        var parameters = [
+        let parameters = [
             URLQueryItem(name: "grant_type", value: grantType),
             URLQueryItem(name: "code", value: authorizationCode),
             URLQueryItem(name: "code_verifier", value: codeVerifier),
             URLQueryItem(name: "redirect_uri", value: redirectURI.absoluteString)
         ]
-        if let resource {
-            parameters.set(name: "resource", value: resourceURLStripSlash(resource))
-        }
         let response = try await tokenRequest(
             url: tokenURL,
             authorizationServerURL: authorizationServerURL,
@@ -228,7 +226,8 @@ public enum MCPOAuth {
             parameters: parameters,
             clientAuthentication: clientAuthentication,
             trustedOrigin: trustedOrigin,
-            transport: transport
+            transport: transport,
+            resource: resource
         )
         return try MCPOAuthTokens(json: response.jsonValue())
     }
@@ -262,13 +261,10 @@ public enum MCPOAuth {
             tokenURL,
             trustedOrigin: trustedOrigin
         )
-        var parameters = [
+        let parameters = [
             URLQueryItem(name: "grant_type", value: grantType),
             URLQueryItem(name: "refresh_token", value: refreshToken)
         ]
-        if let resource {
-            parameters.set(name: "resource", value: resourceURLStripSlash(resource))
-        }
         let response = try await tokenRequest(
             url: tokenURL,
             authorizationServerURL: authorizationServerURL,
@@ -277,7 +273,8 @@ public enum MCPOAuth {
             parameters: parameters,
             clientAuthentication: clientAuthentication,
             trustedOrigin: trustedOrigin,
-            transport: transport
+            transport: transport,
+            resource: resource
         )
         var raw = try response.jsonValue()
         if raw["refresh_token"]?.stringValue == nil, var object = raw.objectValue {

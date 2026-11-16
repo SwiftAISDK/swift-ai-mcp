@@ -73,6 +73,9 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
     private var lastInboundEventID: String?
     private let maxInboundReconnectAttempts: Int
     private let inboundReconnectDelayNanoseconds: UInt64
+    /// Upstream defaults `redirect` to `'error'`: redirects are not followed
+    /// and a redirect response fails the request.
+    private let followRedirects: Bool
 
     public init(
         url: URL,
@@ -85,14 +88,18 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
         onSessionIDChange: (@Sendable (String?) -> Void)? = nil,
         onSessionExpired: (@Sendable (String) -> Void)? = nil,
         maxInboundReconnectAttempts: Int = 2,
-        inboundReconnectDelayNanoseconds: UInt64 = 1_000_000_000
+        inboundReconnectDelayNanoseconds: UInt64 = 1_000_000_000,
+        followRedirects: Bool = false
     ) {
         self.url = url
         self.headers = headers
         self.transport = transport
         self.streamingTransport = transport as? any AIStreamingTransport
         self.authProvider = authProvider
-        self.protocolVersion = initialProtocolVersion ?? MCPClient.latestLegacyProtocolVersion
+        // Matches upstream `{ type: 'http' }`, which starts in the stateless
+        // (modern) protocol until initialization negotiates a legacy version.
+        self.protocolVersion = initialProtocolVersion ?? MCPClient.latestProtocolVersion
+        self.followRedirects = followRedirects
         self.sessionID = initialSessionID
         self.terminateSessionOnClose = terminateSessionOnClose
         self.onSessionIDChange = onSessionIDChange
@@ -112,7 +119,8 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
         onSessionIDChange: (@Sendable (String?) -> Void)? = nil,
         onSessionExpired: (@Sendable (String) -> Void)? = nil,
         maxInboundReconnectAttempts: Int = 2,
-        inboundReconnectDelayNanoseconds: UInt64 = 1_000_000_000
+        inboundReconnectDelayNanoseconds: UInt64 = 1_000_000_000,
+        followRedirects: Bool = false
     ) throws {
         try self.init(
             url: requireURL(url),
@@ -125,7 +133,8 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             onSessionIDChange: onSessionIDChange,
             onSessionExpired: onSessionExpired,
             maxInboundReconnectAttempts: maxInboundReconnectAttempts,
-            inboundReconnectDelayNanoseconds: inboundReconnectDelayNanoseconds
+            inboundReconnectDelayNanoseconds: inboundReconnectDelayNanoseconds,
+            followRedirects: followRedirects
         )
     }
 
@@ -161,6 +170,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
     }
 
     private func openInboundSSELoop() async {
+        defer { if !Task.isCancelled { inboundTask = nil } }
         guard !isModernProtocol else { return }
         var attempts = 0
         while !Task.isCancelled {
@@ -171,9 +181,11 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             } catch is CancellationError {
                 return
             } catch {
+                guard attempts < maxInboundReconnectAttempts else { return }
+                // Upstream: initial delay * 1.5^attempt, capped at 30 seconds.
+                let delay = min(Double(inboundReconnectDelayNanoseconds) * pow(1.5, Double(attempts)), 30_000_000_000)
                 attempts += 1
-                guard attempts <= maxInboundReconnectAttempts else { return }
-                try? await Task.sleep(nanoseconds: inboundReconnectDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: UInt64(delay))
             }
         }
     }
@@ -181,6 +193,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
     @discardableResult
     private func openInboundSSEOnce() async throws -> Bool {
         guard !isModernProtocol else { return false }
+        let requestSessionID = sessionID
         if let streamingTransport {
             let response = try await sendRawStream(
                 method: "GET",
@@ -193,8 +206,12 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
                 return false
             }
             guard (200..<300).contains(response.statusCode) else {
+                response.cancelBody()
+                if response.statusCode == 404, let requestSessionID {
+                    expireSessionID(requestSessionID)
+                }
                 throw MCPClientError(
-                    message: "MCP HTTP Transport Error: GET SSE failed: \(response.statusCode)",
+                    message: "MCP HTTP Transport Error: GET SSE failed: \(mcpHTTPStatusLine(response.statusCode))",
                     statusCode: response.statusCode,
                     url: url.absoluteString
                 )
@@ -213,8 +230,11 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             return false
         }
         guard (200..<300).contains(response.statusCode) else {
+            if response.statusCode == 404, let requestSessionID {
+                expireSessionID(requestSessionID)
+            }
             throw MCPClientError(
-                message: "MCP HTTP Transport Error: GET SSE failed: \(response.statusCode)",
+                message: "MCP HTTP Transport Error: GET SSE failed: \(mcpHTTPStatusLine(response.statusCode))",
                 statusCode: response.statusCode,
                 url: url.absoluteString,
                 responseBody: response.bodyText
@@ -270,6 +290,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
                 abortSignal: options?.abortSignal,
                 transport: streamingTransport
             )
+            restartInboundSSEAfterAccepted(response.statusCode)
             return try await handleStreamingResponse(response, expectedID: message["id"]?.intValue)
         }
 
@@ -281,25 +302,36 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             includeSessionID: !isInitializeRequest,
             abortSignal: options?.abortSignal
         )
+        restartInboundSSEAfterAccepted(response.statusCode)
         return try await handleBufferedResponse(response, expectedID: message["id"]?.intValue)
     }
 
     private func sendNotification(_ message: JSONValue) async throws {
         if let streamingTransport {
-            _ = try await sendRawStream(
+            let response = try await sendRawStream(
                 method: "POST",
                 accept: "application/json, text/event-stream",
                 body: try encodeJSONBody(message),
                 transport: streamingTransport
             )
+            response.cancelBody()
+            restartInboundSSEAfterAccepted(response.statusCode)
             return
         }
 
-        _ = try await sendRaw(
+        let response = try await sendRaw(
             method: "POST",
             accept: "application/json, text/event-stream",
             body: try encodeJSONBody(message)
         )
+        restartInboundSSEAfterAccepted(response.statusCode)
+    }
+
+    /// Upstream retries the optional inbound SSE stream after a 202 Accepted
+    /// response when no stream is open (for example after an earlier 405).
+    private func restartInboundSSEAfterAccepted(_ statusCode: Int) {
+        guard statusCode == 202, isStarted, !isModernProtocol, inboundTask == nil else { return }
+        startInboundSSE()
     }
 
     private func sendRaw(
@@ -319,7 +351,8 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             url: url,
             headers: requestHeaders,
             body: body,
-            abortSignal: abortSignal
+            abortSignal: abortSignal,
+            followRedirects: followRedirects
         ))
         applySessionID(from: response)
         if method == "GET", response.statusCode == 405 {
@@ -355,8 +388,15 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
            let json = try? response.jsonValue(), json["error"] != nil {
             return response
         }
+        if method == "GET", !(200..<300).contains(response.statusCode) {
+            // The inbound SSE caller reports GET failures with upstream's
+            // `GET SSE failed` diagnostics and session-expiry handling.
+            return response
+        }
         guard (200..<300).contains(response.statusCode) else {
-            var message = "MCP HTTP Transport Error: \(method) \(url.absoluteString) failed with HTTP \(response.statusCode): \(response.bodyText)"
+            var message = method == "POST"
+                ? "MCP HTTP Transport Error: POSTing to endpoint (HTTP \(response.statusCode)): \(response.bodyText)"
+                : "MCP HTTP Transport Error: \(method) \(url.absoluteString) failed with HTTP \(response.statusCode): \(response.bodyText)"
             if !isModernProtocol, method == "POST", response.statusCode == 404 {
                 if let requestSessionID {
                     expireSessionID(requestSessionID)
@@ -393,10 +433,15 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             url: url,
             headers: requestHeaders,
             body: body,
-            abortSignal: abortSignal
+            abortSignal: abortSignal,
+            followRedirects: followRedirects
         ))
         applySessionID(from: response)
         if method == "GET", response.statusCode == 405 {
+            return response
+        }
+        if method == "GET", response.statusCode != 401 || authProvider == nil || triedAuth,
+           !(200..<300).contains(response.statusCode) {
             return response
         }
         if response.statusCode == 401, let authProvider, !triedAuth {
@@ -436,10 +481,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
                 )
             }
             let responseBodyText = String(data: responseBody, encoding: .utf8)
-            var message = "MCP HTTP Transport Error: \(method) \(url.absoluteString) failed with HTTP \(response.statusCode)"
-            if let responseBodyText {
-                message += ": \(responseBodyText)"
-            }
+            var message = "MCP HTTP Transport Error: POSTing to endpoint (HTTP \(response.statusCode)): \(responseBodyText ?? "null")"
             if !isModernProtocol, response.statusCode == 404 {
                 if let requestSessionID {
                     expireSessionID(requestSessionID)
@@ -488,7 +530,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
         if let token = try await authProvider?.accessToken(), !token.isEmpty {
             requestHeaders["authorization"] = "Bearer \(token)"
         }
-        return requestHeaders
+        return mcpWithUserAgentSuffix(requestHeaders)
     }
 
     private func setSessionID(_ sessionID: String?) {
@@ -672,13 +714,13 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
     }
 }
 
-private func mcpAuthorizationHeader(in headers: [String: String]) -> String? {
+func mcpAuthorizationHeader(in headers: [String: String]) -> String? {
     headers.first {
         $0.key.caseInsensitiveCompare("authorization") == .orderedSame
     }?.value
 }
 
-private actor MCPAuthorizationRecoveryCoordinator {
+actor MCPAuthorizationRecoveryCoordinator {
     private var nextID = 0
     private var inFlight: (id: Int, task: Task<Bool, Error>)?
 
@@ -726,4 +768,27 @@ private actor MCPAuthorizationRecoveryCoordinator {
             throw error
         }
     }
+}
+/// Upstream `withUserAgentSuffix(headers, 'ai-sdk/<mcp version>', runtime)`.
+let mcpPackageUserAgent = "ai-sdk/2.0.99"
+
+func mcpWithUserAgentSuffix(_ headers: [String: String]) -> [String: String] {
+    var output = headers
+    let existingKey = output.keys.first { $0.caseInsensitiveCompare("user-agent") == .orderedSame }
+    let current = existingKey.flatMap { output.removeValue(forKey: $0) } ?? ""
+    output["user-agent"] = [current, mcpPackageUserAgent].filter { !$0.isEmpty }.joined(separator: " ")
+    return output
+}
+
+/// `status statusText` as reported by fetch for standard status codes.
+func mcpHTTPStatusLine(_ statusCode: Int) -> String {
+    let reasons: [Int: String] = [
+        400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+        405: "Method Not Allowed", 406: "Not Acceptable", 408: "Request Timeout", 409: "Conflict",
+        410: "Gone", 415: "Unsupported Media Type", 429: "Too Many Requests",
+        500: "Internal Server Error", 501: "Not Implemented", 502: "Bad Gateway",
+        503: "Service Unavailable", 504: "Gateway Timeout"
+    ]
+    guard let reason = reasons[statusCode] else { return "\(statusCode)" }
+    return "\(statusCode) \(reason)"
 }

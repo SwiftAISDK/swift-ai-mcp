@@ -50,6 +50,7 @@ public actor MCPClient {
     private var protocolEra: MCPProtocolEra = .legacy
     private var protocolVersion = MCPClient.latestLegacyProtocolVersion
     private var toolHeaderBindings: [String: [MCPToolHeaderBinding]] = [:]
+    private var toolCallRetryInitialDelayMilliseconds = 2_000
 
     private init(
         transport: any MCPTransport,
@@ -188,6 +189,29 @@ public actor MCPClient {
         }
     }
 
+    /// Upstream `tools({ schemas })`: returns only the named server tools as
+    /// typed (non-dynamic) tools using the caller's input schema. When an
+    /// output schema is supplied, successful results are replaced by their
+    /// validated `structuredContent` (or parsed first text content).
+    public func tools(schemas: [String: MCPToolSchema]) async throws -> [String: AITool] {
+        var definitions = try await listTools()
+        var allTools = definitions.tools
+
+        while let nextCursor = definitions.nextCursor {
+            definitions = try await listTools(cursor: nextCursor)
+            allTools.append(contentsOf: definitions.tools)
+        }
+
+        return toolsFromDefinitions(MCPListToolsResult(tools: allTools), schemas: schemas)
+    }
+
+    public func toolsFromDefinitions(_ definitions: MCPListToolsResult, schemas: [String: MCPToolSchema]) -> [String: AITool] {
+        prepareToolDefinitions(definitions).tools.reduce(into: [String: AITool]()) { output, definition in
+            guard let schema = schemas[definition.name] else { return }
+            output[definition.name] = tool(from: definition, schema: schema)
+        }
+    }
+
     public func listResources(cursor: String? = nil, options: MCPRequestOptions? = nil) async throws -> MCPListResourcesResult {
         let result = try await request(
             method: "resources/list",
@@ -220,7 +244,9 @@ public actor MCPClient {
         return try MCPListPromptsResult(json: result)
     }
 
-    public func getPrompt(name: String, arguments: JSONValue = .object([:]), options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
+    /// Omitting `arguments` omits the field from the `prompts/get` request,
+    /// matching upstream `getPrompt({ name })`.
+    public func getPrompt(name: String, arguments: JSONValue? = nil, options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
         let result = try await request(
             method: "prompts/get",
             params: .object([
@@ -238,7 +264,7 @@ public actor MCPClient {
     }
 
     @available(*, deprecated, renamed: "getPrompt(name:arguments:options:)")
-    public func experimentalGetPrompt(name: String, arguments: JSONValue = .object([:]), options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
+    public func experimentalGetPrompt(name: String, arguments: JSONValue? = nil, options: MCPRequestOptions? = nil) async throws -> MCPGetPromptResult {
         try await getPrompt(name: name, arguments: arguments, options: options)
     }
 
@@ -421,7 +447,7 @@ public actor MCPClient {
             throw MCPClientError(message: "Server sent invalid initialize result.")
         }
         guard Self.supportedProtocolVersions.contains(protocolVersion) else {
-            throw MCPClientError(message: "Server protocol version is not supported: \(protocolVersion)")
+            throw MCPClientError(message: "Server's protocol version is not supported: \(protocolVersion)")
         }
         serverCapabilities = result["capabilities"] ?? .object([:])
         protocolEra = .legacy
@@ -458,10 +484,9 @@ public actor MCPClient {
             )
         }
 
+        let request: MCPElicitationRequest
         do {
-            let request = try MCPElicitationRequest(params: message["params"] ?? .object([:]))
-            let result = try await elicitationRequestHandler(request)
-            return mcpJSONRPCResultResponse(id: id, result: result.rawValue)
+            request = try MCPElicitationRequest(params: message["params"] ?? .object([:]))
         } catch let error as MCPClientError {
             return mcpJSONRPCErrorResponse(
                 id: id,
@@ -470,11 +495,23 @@ public actor MCPClient {
                 data: error.data
             )
         } catch {
-            return mcpJSONRPCErrorResponse(
-                id: id,
-                code: -32603,
-                message: String(describing: error)
-            )
+            return mcpJSONRPCErrorResponse(id: id, code: -32602, message: "Invalid elicitation request: \(error)")
+        }
+
+        // Handler failures are internal errors (-32603) carrying the error
+        // message, and are also reported through `onUncaughtError`.
+        do {
+            let result = try await elicitationRequestHandler(request)
+            return mcpJSONRPCResultResponse(id: id, result: result.rawValue)
+        } catch {
+            onUncaughtError?(error)
+            let errorMessage: String
+            if let error = error as? MCPClientError {
+                errorMessage = error.message
+            } else {
+                errorMessage = (error as NSError).localizedDescription
+            }
+            return mcpJSONRPCErrorResponse(id: id, code: -32603, message: errorMessage)
         }
     }
 
@@ -485,7 +522,7 @@ public actor MCPClient {
         options: MCPRequestOptions? = nil
     ) async throws -> JSONValue {
         guard !isClosed else {
-            throw MCPClientError(message: "Attempted to send a request from a closed client.")
+            throw MCPClientError(message: "Attempted to send a request from a closed client")
         }
         if !skipCapabilityCheck {
             try assertCapability(capabilityName(for: method), method: method)
@@ -528,7 +565,12 @@ public actor MCPClient {
             } catch let error as MCPClientError {
                 throw error
             } catch {
-                if method == "server/discover", transport.waitsForProtocolVersionDiscovery { throw error }
+                // Upstream only wraps failures inside the modern multi-round
+                // request loop; single legacy requests and discovery reject
+                // with the transport's original error.
+                guard protocolEra == .modern, ["tools/call", "prompts/get", "resources/read"].contains(method) else {
+                    throw error
+                }
                 throw MCPClientError(message: "Failed to process server response", cause: error)
             }
             switch outcome {
@@ -635,18 +677,28 @@ public actor MCPClient {
 
     private func assertCapability(_ capability: String, method: String) throws {
         guard capability != "initialize" else { return }
-        if serverCapabilities[capability] == nil {
-            throw MCPClientError(message: "Server does not support \(capability) for \(method).")
+        guard ["tools", "resources", "prompts", "events", "completions"].contains(capability) else {
+            throw MCPClientError(message: "Unsupported method: \(method)")
+        }
+        // Upstream checks truthiness, so an explicit `null`/`false` capability
+        // is treated as absent.
+        switch serverCapabilities[capability] {
+        case nil, .null?, .bool(false)?:
+            throw MCPClientError(message: "Server does not support \(capability)")
+        default:
+            return
         }
     }
 
     private func capabilityName(for method: String) -> String {
-        if method.hasPrefix("tools/") { return "tools" }
-        if method.hasPrefix("resources/") { return "resources" }
-        if method.hasPrefix("prompts/") { return "prompts" }
-        if method.hasPrefix("events/") { return "events" }
-        if method == "completion/complete" { return "completions" }
-        return method
+        switch method {
+        case "tools/list", "tools/call": return "tools"
+        case "resources/list", "resources/read", "resources/templates/list": return "resources"
+        case "prompts/list", "prompts/get": return "prompts"
+        case "events/list", "events/subscribe", "events/unsubscribe": return "events"
+        case "completion/complete": return "completions"
+        default: return method
+        }
     }
 
     private func modernRequestParams(from params: JSONValue?) -> JSONValue? {
@@ -710,6 +762,10 @@ public actor MCPClient {
         )
     }
 
+    /// Mirrors `retryWithExponentialBackoff` from provider-utils: 2s initial
+    /// delay doubling per retry, abort-aware waits, unwrapped first-attempt
+    /// failures and `MCPClientError` wrappers for exhausted/non-retryable
+    /// later attempts.
     private func callToolWithRetry(
         options: MCPRequestOptions?,
         execute: () async throws -> JSONValue
@@ -718,28 +774,49 @@ public actor MCPClient {
             return try await execute()
         }
         var errors: [Error] = []
-        for attempt in 0...maxRetries {
-            try options?.abortSignal?.throwIfAborted()
+        var delayMilliseconds = toolCallRetryInitialDelayMilliseconds
+        while true {
             do {
                 return try await execute()
             } catch {
-                errors.append(error)
-                guard attempt < maxRetries, mcpShouldRetryToolCall(error) else {
+                if error is CancellationError || options?.abortSignal?.isAborted == true {
                     throw error
                 }
+                errors.append(error)
+                let tryNumber = errors.count
+                let errorMessage = mcpRetryErrorMessage(error)
+                if tryNumber > maxRetries {
+                    throw MCPClientError(
+                        message: "Failed after \(tryNumber) attempts. Last error: \(errorMessage)",
+                        cause: error
+                    )
+                }
+                guard mcpShouldRetryToolCall(error) else {
+                    if tryNumber == 1 { throw error }
+                    throw MCPClientError(
+                        message: "Failed after \(tryNumber) attempts with non-retryable error: '\(errorMessage)'",
+                        cause: error
+                    )
+                }
+                try await mcpRetryDelay(milliseconds: delayMilliseconds, abortSignal: options?.abortSignal)
+                delayMilliseconds *= 2
             }
         }
-        throw errors.last ?? MCPClientError(message: "MCP tool call failed.")
     }
 
-    private func tool(from definition: MCPToolDefinition) -> AITool {
+    /// Test hook for the provider-utils retry delay (2000ms by default).
+    func setToolCallRetryInitialDelayMilliseconds(_ milliseconds: Int) {
+        toolCallRetryInitialDelayMilliseconds = milliseconds
+    }
+
+    private func tool(from definition: MCPToolDefinition, schema: MCPToolSchema? = nil) -> AITool {
         var inputSchema = definition.inputSchema.objectValue ?? ["type": .string("object")]
         if inputSchema["properties"] == nil {
             inputSchema["properties"] = .object([:])
         }
-        if inputSchema["additionalProperties"] == nil {
-            inputSchema["additionalProperties"] = .bool(false)
-        }
+        // Upstream always closes the converted dynamic schema, even when the
+        // server advertised `additionalProperties: true`.
+        inputSchema["additionalProperties"] = .bool(false)
 
         let resolvedTitle = definition.title ?? definition.annotations?["title"]?.stringValue
         var metadata: [String: JSONValue] = [
@@ -749,37 +826,51 @@ public actor MCPClient {
         if let resolvedTitle {
             metadata["title"] = .string(resolvedTitle)
         }
-        if let mcpMetadata = definition.metadata {
-            metadata["_meta"] = mcpMetadata
-        }
         if let annotations = definition.toolAnnotations {
             metadata["annotations"] = annotations.jsonValue
         }
+        // `McpProviderMetadata.app`: the normalized `_meta.ui` of an MCP App
+        // tool plus the app MIME type. Invalid app URIs omit the entry because
+        // this conversion API is non-throwing.
+        if let appMeta = try? MCPApps.toolMeta(from: definition), appMeta.resourceURI != nil,
+           var app = appMeta.rawValue.objectValue {
+            app["mimeType"] = .string(MCPApps.appMIMEType)
+            metadata["app"] = .object(app)
+        }
+        // Upstream `tool.metadata` is exactly `McpProviderMetadata`; the raw
+        // `_meta` stays available through the provider metadata below.
+        let toolMetadata = metadata
+        if let mcpMetadata = definition.metadata {
+            metadata["_meta"] = mcpMetadata
+        }
 
-        return AITool.dynamic(
+        let outputSchema = schema?.outputSchema
+        var converted = AITool.dynamic(
             name: definition.name,
             description: definition.description,
-            parameters: .object(inputSchema),
+            parameters: schema?.inputSchema ?? .object(inputSchema),
             providerMetadata: ["mcp": .object(metadata)],
             toModelOutput: { context in
                 mcpToolModelOutput(from: context.output)
             }
-        ) { [weak self] arguments, context in
-            guard let self else {
-                throw MCPClientError(message: "MCP client has been released.")
-            }
+        ) { [self] arguments, context in
+            // Like upstream, converted tools keep their client alive; the
+            // client never retains its tools, so there is no cycle.
             try context.abortSignal?.throwIfAborted()
-            return try await self.callTool(
+            let result = try await self.callTool(
                 name: definition.name,
                 arguments: arguments,
                 options: MCPRequestOptions(abortSignal: context.abortSignal)
-            ).rawValue
-        } execute: { [weak self] arguments in
-            guard let self else {
-                throw MCPClientError(message: "MCP client has been released.")
-            }
-            return try await self.callTool(name: definition.name, arguments: arguments).rawValue
+            )
+            return try mcpTypedToolOutput(result, outputSchema: outputSchema, toolName: definition.name)
+        } execute: { [self] arguments in
+            let result = try await self.callTool(name: definition.name, arguments: arguments)
+            return try mcpTypedToolOutput(result, outputSchema: outputSchema, toolName: definition.name)
         }
+        converted.dynamic = schema == nil
+        converted.title = resolvedTitle
+        converted.metadata = toolMetadata
+        return converted
     }
 }
 
@@ -911,14 +1002,72 @@ private func mcpRunWithRequestOptions<Value: Sendable>(
 }
 
 private func mcpShouldRetryToolCall(_ error: Error) -> Bool {
-    if let error = error as? MCPClientError {
-        if let status = error.statusCode {
-            return status == 408 || status == 409 || status == 429 || status >= 500
-        }
-        if error.code != nil {
-            return false
-        }
+    // Upstream reads `statusCode` from any error object first.
+    let statusCode = (error as? MCPClientError)?.statusCode ?? (error as? AIAPICallError)?.statusCode
+    if let status = statusCode {
+        return status == 408 || status == 409 || status == 429 || status >= 500
+    }
+    if let error = error as? MCPClientError, error.code != nil {
+        return false
+    }
+    // Foundation equivalents of the Node/Bun socket error codes upstream
+    // retries (ECONNREFUSED, ECONNRESET, ETIMEDOUT, EPIPE, ...).
+    if let error = error as? URLError {
+        return [.cannotConnectToHost, .networkConnectionLost, .timedOut].contains(error.code)
+    }
+    if let error = error as? POSIXError {
+        return [.ECONNREFUSED, .ECONNRESET, .ETIMEDOUT, .EPIPE].contains(error.code)
     }
     let text = String(describing: error)
     return ["ConnectionRefused", "ConnectionClosed", "FailedToOpenSocket", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE"].contains { text.contains($0) }
+}
+private func mcpRetryErrorMessage(_ error: Error) -> String {
+    if let error = error as? MCPClientError { return error.message }
+    return getErrorMessage(error)
+}
+
+private func mcpRetryDelay(milliseconds: Int, abortSignal: AIAbortSignal?) async throws {
+    try abortSignal?.throwIfAborted()
+    guard milliseconds > 0 else { return }
+    let (nanoseconds, overflow) = UInt64(milliseconds).multipliedReportingOverflow(by: 1_000_000)
+    try await Task.sleep(nanoseconds: overflow ? UInt64.max : nanoseconds)
+    try abortSignal?.throwIfAborted()
+}
+
+/// Explicit schemas for `MCPClient.tools(schemas:)`.
+public struct MCPToolSchema: Sendable {
+    public var inputSchema: JSONValue
+    public var outputSchema: JSONValue?
+
+    public init(inputSchema: JSONValue, outputSchema: JSONValue? = nil) {
+        self.inputSchema = inputSchema
+        self.outputSchema = outputSchema
+    }
+}
+
+/// Upstream `extractStructuredContent`: tool errors bypass validation.
+private func mcpTypedToolOutput(_ result: MCPCallToolResult, outputSchema: JSONValue?, toolName: String) throws -> JSONValue {
+    guard let outputSchema, !result.isError else { return result.rawValue }
+    if let structuredContent = result.structuredContent, structuredContent != .null {
+        do {
+            try AIJSONSchemaValidator.validate(structuredContent, schema: outputSchema)
+        } catch {
+            throw MCPClientError(
+                message: "Tool \"\(toolName)\" returned structuredContent that does not match the expected outputSchema",
+                cause: error
+            )
+        }
+        return structuredContent
+    }
+    if let text = result.content.first(where: { $0["type"] == "text" })?["text"]?.stringValue {
+        let parsed = safeParseJSON(text, schema: outputSchema)
+        guard parsed.success, let value = parsed.value else {
+            throw MCPClientError(
+                message: "Tool \"\(toolName)\" returned content that does not match the expected outputSchema",
+                cause: MCPClientError(message: parsed.errorDescription ?? "Invalid JSON")
+            )
+        }
+        return value
+    }
+    throw MCPClientError(message: "Tool \"\(toolName)\" did not return structuredContent or parseable text content")
 }

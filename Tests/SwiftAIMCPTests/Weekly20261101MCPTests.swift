@@ -163,8 +163,8 @@ struct Weekly20261101MCPTests {
 
     @Test func stablePromptNamesRetainDeprecatedAliases() async throws {
         let transport = WeeklyMCPTransport("complete"), client = try await MCPClient.connect(transport: transport)
-        let stableList = try await client.listPrompts(), legacyList = try await client.experimentalListPrompts()
-        let stableGet = try await client.getPrompt(name: "prompt"), legacyGet = try await client.experimentalGetPrompt(name: "prompt")
+        let stableList = try await client.listPrompts(), legacyList = try await (client as any MCPLegacyPromptAliases).experimentalListPrompts(cursor: nil, options: nil)
+        let stableGet = try await client.getPrompt(name: "prompt"), legacyGet = try await (client as any MCPLegacyPromptAliases).experimentalGetPrompt(name: "prompt", arguments: nil, options: nil)
         #expect(stableList.rawValue == legacyList.rawValue)
         #expect(stableGet.rawValue == legacyGet.rawValue)
         try await client.close()
@@ -198,3 +198,11 @@ struct Weekly20261101MCPTests {
     }
 
 }
+
+/// Calls the deprecated prompt aliases without a deprecation warning, so the
+/// alias-compatibility assertions above keep compiling warning-free.
+private protocol MCPLegacyPromptAliases: Sendable {
+    func experimentalListPrompts(cursor: String?, options: MCPRequestOptions?) async throws -> MCPListPromptsResult
+    func experimentalGetPrompt(name: String, arguments: JSONValue?, options: MCPRequestOptions?) async throws -> MCPGetPromptResult
+}
+extension MCPClient: MCPLegacyPromptAliases {}

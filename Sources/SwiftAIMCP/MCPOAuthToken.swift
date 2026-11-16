@@ -13,7 +13,8 @@ func tokenRequest(
     parameters: [URLQueryItem],
     clientAuthentication: MCPOAuthClientAuthenticationHandler?,
     trustedOrigin: URL?,
-    transport: any AITransport
+    transport: any AITransport,
+    resource: URL? = nil
 ) async throws -> AIHTTPResponse {
     var headers = [
         "Content-Type": "application/x-www-form-urlencoded",
@@ -40,6 +41,11 @@ func tokenRequest(
             headers: &headers,
             parameters: &parameters
         )
+    }
+    // Upstream sets `resource` after client authentication, so custom
+    // authenticators do not see it and it follows the client credentials.
+    if let resource {
+        parameters.set(name: "resource", value: resourceURLStripSlash(resource))
     }
     let response = try await sendMCPOAuthEndpoint(AIHTTPRequest(
         method: "POST",
@@ -108,8 +114,12 @@ func formEncoded(_ items: [URLQueryItem]) -> String {
     }.joined(separator: "&")
 }
 
+/// `application/x-www-form-urlencoded` serialization used by
+/// `URLSearchParams`: only `*-._` and ASCII alphanumerics stay literal and
+/// spaces become `+`.
 func urlFormEncode(_ value: String) -> String {
-    var allowed = CharacterSet.urlQueryAllowed
-    allowed.remove(charactersIn: "&+=")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    var allowed = CharacterSet()
+    allowed.insert(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789*-._ ")
+    let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    return encoded.replacingOccurrences(of: " ", with: "+")
 }

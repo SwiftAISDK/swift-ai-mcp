@@ -448,7 +448,7 @@ private actor MCPTimeoutTestTransport: MCPTransport {
 @Test func mcpHTTPTransportForwardsAbortSignalToRequests() async throws {
     let controller = AIAbortController()
     let http = RecordingTransport(response: jsonResponse(#"{"jsonrpc":"2.0","id":7,"result":{}}"#))
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
 
     _ = try await transport.request(
         [
@@ -495,13 +495,13 @@ private actor MCPTimeoutTestTransport: MCPTransport {
     let transport = MockMCPTransport(capabilities: fullMCPCapabilities())
     let client = try await MCPClient.connect(transport: transport)
 
-    let prompts = try await client.experimentalListPrompts(cursor: "prompt-cursor")
+    let prompts = try await client.listPrompts(cursor: "prompt-cursor")
     #expect(prompts.nextCursor == "prompt-cursor-2")
     #expect(prompts.prompts.first?.name == "summarize")
     #expect(prompts.prompts.first?.arguments.first?.name == "topic")
     #expect(prompts.prompts.first?.arguments.first?.required == true)
 
-    let prompt = try await client.experimentalGetPrompt(name: "summarize", arguments: ["topic": "Swift"])
+    let prompt = try await client.getPrompt(name: "summarize", arguments: ["topic": "Swift"])
     #expect(prompt.description == "Summarize a topic.")
     #expect(prompt.messages.first?.role == "user")
     #expect(prompt.messages.first?.content["text"]?.stringValue == "Summarize Swift")
@@ -649,7 +649,7 @@ private actor MCPTimeoutTestTransport: MCPTransport {
         jsonResponse(#"{"jsonrpc":"2.0","id":7,"result":{"ok":true}}"#),
         AIHTTPResponse(statusCode: 202)
     ])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", headers: ["authorization": "Bearer token"], transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", headers: ["authorization": "Bearer token"], transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
 
     let response = try await transport.request([
         "jsonrpc": "2.0",
@@ -686,7 +686,8 @@ private actor MCPTimeoutTestTransport: MCPTransport {
     let transport = try MCPHTTPTransport(
         url: "https://mcp.example.com/rpc",
         transport: http,
-        authProvider: auth
+        authProvider: auth,
+        initialProtocolVersion: MCPClient.latestLegacyProtocolVersion
     )
 
     let response = try await transport.request([
@@ -720,7 +721,8 @@ private actor MCPTimeoutTestTransport: MCPTransport {
     let transport = try MCPHTTPTransport(
         url: "https://mcp.example.com/rpc",
         transport: http,
-        authProvider: auth
+        authProvider: auth,
+        initialProtocolVersion: MCPClient.latestLegacyProtocolVersion
     )
 
     let response = try await transport.request([
@@ -749,7 +751,7 @@ private actor MCPTimeoutTestTransport: MCPTransport {
         ),
         AIHTTPResponse(statusCode: 200)
     ])
-    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http)
+    let transport = try MCPHTTPTransport(url: "https://mcp.example.com/rpc", transport: http, initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
 
     let response = try await transport.request([
         "jsonrpc": "2.0",

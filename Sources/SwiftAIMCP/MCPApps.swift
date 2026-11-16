@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftAIProvider
 import SwiftAITransport
 import SwiftAIProviderUtilities
@@ -23,22 +24,30 @@ public enum MCPApps {
         let resourceValue = uiMeta?["resourceUri"] ?? tool.metadata?[legacyResourceURIMetadataKey]
         let visibility = uiMeta?["visibility"]?.arrayValue?.compactMap(\.stringValue).filter { $0 == "model" || $0 == "app" }
 
+        // Upstream returns `{ ...ui, resourceUri?, visibility? }` where the
+        // visibility list keeps only `model`/`app` entries.
+        var normalized = uiMeta ?? [:]
+        if let visibility {
+            normalized["visibility"] = .array(visibility.map(JSONValue.string))
+        }
+
         if let resourceValue {
             guard let resourceURI = resourceValue.stringValue, resourceURI.hasPrefix("ui://") else {
                 throw MCPClientError(message: "Invalid MCP App resource URI: \(resourceValue)")
             }
+            normalized["resourceUri"] = .string(resourceURI)
             return MCPAppToolMeta(
                 resourceURI: resourceURI,
                 visibility: visibility,
-                rawValue: .object((uiMeta ?? [:]).merging(["resourceUri": .string(resourceURI)]) { _, new in new })
+                rawValue: .object(normalized)
             )
         }
 
-        guard let uiMeta else { return nil }
+        guard uiMeta != nil else { return nil }
         return MCPAppToolMeta(
             resourceURI: nil,
             visibility: visibility,
-            rawValue: .object(uiMeta)
+            rawValue: .object(normalized)
         )
     }
 
@@ -104,7 +113,7 @@ public enum MCPApps {
         return MCPAppResource(
             uri: uri,
             html: html,
-            metadata: normalizedAppMetadata(content.rawValue["_meta"]?["ui"] ?? content.rawValue["_meta"])
+            metadata: normalizedAppMetadata(content.rawValue["_meta"]?["ui"])
         )
     }
 
@@ -157,16 +166,100 @@ public struct MCPAppResource: Equatable, Hashable, Sendable {
         self.metadata = metadata
     }
 }
+/// Mirrors upstream `MCPAppResourceMetaSchema`: only an object `_meta.ui` is
+/// read; malformed known fields are dropped and unknown keys pass through.
 private func normalizedAppMetadata(_ metadata: JSONValue?) -> JSONValue? {
-    guard var object = metadata?.objectValue else { return metadata }
-    if var csp = object["csp"]?.objectValue {
-        for key in ["connectDomains", "resourceDomains", "frameDomains", "baseUriDomains"] {
-            if let value = csp[key] {
-                if let array = value.arrayValue { csp[key] = .array(array.compactMap { $0.stringValue.map(JSONValue.string) }) }
-                else { csp.removeValue(forKey: key) }
+    guard var object = metadata?.objectValue else { return nil }
+    if let prefersBorder = object["prefersBorder"], prefersBorder.boolValue == nil {
+        object.removeValue(forKey: "prefersBorder")
+    }
+    if let permissions = object["permissions"], permissions.objectValue == nil {
+        object.removeValue(forKey: "permissions")
+    }
+    if let cspValue = object["csp"] {
+        if var csp = cspValue.objectValue {
+            for key in ["connectDomains", "resourceDomains", "frameDomains", "baseUriDomains"] {
+                if let value = csp[key] {
+                    if let array = value.arrayValue { csp[key] = .array(array.compactMap { $0.stringValue.map(JSONValue.string) }) }
+                    else { csp.removeValue(forKey: key) }
+                }
             }
+            object["csp"] = .object(csp)
+        } else {
+            object.removeValue(forKey: "csp")
         }
-        object["csp"] = .object(csp)
     }
     return .object(object)
+}
+
+public extension MCPApps {
+    /// Stable SHA-256 digest (base64url, unpadded) over an MCP App resource's
+    /// `html`, `csp` and `permissions`, matching upstream
+    /// `fingerprintMCPAppResource`. Object keys are sorted so key order does
+    /// not change the fingerprint.
+    static func fingerprint(_ resource: MCPAppResource) -> String {
+        let input: JSONValue = .object([
+            "html": .string(resource.html),
+            "csp": resource.metadata?["csp"] ?? .null,
+            "permissions": resource.metadata?["permissions"] ?? .null
+        ])
+        let digest = SHA256.hash(data: Data(mcpCanonicalJSON(input).utf8))
+        return Data(digest).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// Returns true when the current fingerprint differs from its baseline
+    /// (upstream `detectMCPAppResourceDrift`).
+    static func detectResourceDrift(current: String, baseline: String) -> Bool {
+        current != baseline
+    }
+}
+
+/// JavaScript-compatible canonical JSON: sorted object keys and
+/// `JSON.stringify` string escaping.
+func mcpCanonicalJSON(_ value: JSONValue) -> String {
+    switch value {
+    case .null:
+        return "null"
+    case let .bool(bool):
+        return bool ? "true" : "false"
+    case let .number(number):
+        return mcpJavaScriptNumber(number)
+    case let .string(string):
+        return mcpJavaScriptString(string)
+    case let .array(array):
+        return "[" + array.map(mcpCanonicalJSON).joined(separator: ",") + "]"
+    case let .object(object):
+        let keys = object.keys.sorted { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }
+        return "{" + keys.map { "\(mcpJavaScriptString($0)):\(mcpCanonicalJSON(object[$0] ?? .null))" }.joined(separator: ",") + "}"
+    }
+}
+
+private func mcpJavaScriptNumber(_ number: Double) -> String {
+    guard number.isFinite else { return "null" }
+    if number == number.rounded(), abs(number) < 1e21 {
+        return number == 0 ? "0" : String(format: "%.0f", number)
+    }
+    return "\(number)"
+}
+
+private func mcpJavaScriptString(_ string: String) -> String {
+    var output = "\""
+    for scalar in string.unicodeScalars {
+        switch scalar.value {
+        case 0x22: output += "\\\""
+        case 0x5C: output += "\\\\"
+        case 0x08: output += "\\b"
+        case 0x0C: output += "\\f"
+        case 0x0A: output += "\\n"
+        case 0x0D: output += "\\r"
+        case 0x09: output += "\\t"
+        case 0x00..<0x20: output += String(format: "\\u%04x", scalar.value)
+        default: output.unicodeScalars.append(scalar)
+        }
+    }
+    output += "\""
+    return output
 }

@@ -210,7 +210,7 @@ struct WeeklyMCPEvents20261011Tests {
         let client = try await MCPClient.connect(transport: transport, events: .managed(WeeklyManagedAdapter(operations: operations)))
         let events = await client.experimentalEvents
         _ = try await events.list()
-        let input = MCPManagedSubscribeInput(name: "comment.created", arguments: [:], context: ["application": "watch"], idempotencyKey: "recover-original", lifetime: .expiresAt(nil))
+        let input = MCPManagedSubscribeInput(name: "comment.created", arguments: [:], context: ["application": "watch"], idempotencyKey: "recover-original", lifetime: legacyExpiresAtLifetime(MCPManagedSubscribeInput.Lifetime.self))
         #expect(try await events.subscribe(input).id == "managed_1")
         #expect(try await events.getSubscription(id: "managed_1").status == .active)
         #expect(try await events.listSubscriptions().subscriptions.count == 1)
@@ -312,4 +312,14 @@ private actor WeeklyManagedOperations: MCPEventOperations {
     func getSubscription(id: String, options: MCPRequestOptions?) -> MCPManagedSubscription { record("get") }
     func listSubscriptions(cursor: String?, limit: Int?, status: MCPManagedSubscription.Status?, options: MCPRequestOptions?) -> MCPManagedSubscriptionPage { .init(subscriptions: [record("list")]) }
     func unsubscribe(id: String, options: MCPRequestOptions?) -> MCPManagedSubscription { record("unsubscribe", status: .stopped) }
+}
+
+/// Builds the deprecated `.expiresAt(nil)` lifetime without a deprecation warning;
+/// the managed adapter must still accept it.
+private protocol MCPLegacyExpiringLifetime {
+    static func expiresAt(_ value: String?) -> Self
+}
+extension MCPManagedSubscribeInput.Lifetime: MCPLegacyExpiringLifetime {}
+private func legacyExpiresAtLifetime<Lifetime: MCPLegacyExpiringLifetime>(_: Lifetime.Type) -> Lifetime {
+    Lifetime.expiresAt(nil)
 }

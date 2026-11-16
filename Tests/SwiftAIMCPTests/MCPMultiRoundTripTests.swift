@@ -84,7 +84,7 @@ private func mrtrClient(_ transport: MRTRTransport, advertised: Bool = true) asy
 @Test func mcpMRTRContinuesResourceAndPromptRequests() async throws {
     let transport = MRTRTransport(), client = try await mrtrClient(transport)
     let resource = try await client.readResource(uri: "test://resource")
-    let prompt = try await client.experimentalGetPrompt(name: "prompt")
+    let prompt = try await client.getPrompt(name: "prompt")
     #expect(resource.contents.first?.text == "resource result")
     #expect(!prompt.messages.isEmpty)
     for method in ["resources/read", "prompts/get"] {

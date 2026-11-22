@@ -291,7 +291,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
                 transport: streamingTransport
             )
             restartInboundSSEAfterAccepted(response.statusCode)
-            return try await handleStreamingResponse(response, expectedID: message["id"]?.intValue)
+            return try await handleStreamingResponse(response, expectedID: message["id"]?.intValue, abortSignal: options?.abortSignal)
         }
 
         let response = try await sendRaw(
@@ -598,8 +598,8 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
         if contentType.localizedCaseInsensitiveContains("text/event-stream") {
             let messages = try await parseBufferedSSEMessages(response.body)
             if let expectedID {
-                guard let match = messages.first(where: { $0["id"]?.intValue == expectedID }) else {
-                    throw MCPClientError(message: "MCP HTTP Transport Error: SSE response did not include id \(expectedID).")
+                guard let match = messages.first(where: { isMCPResponse($0, id: expectedID) }) else {
+                    throw incompleteSSEError(requestID: expectedID, statusCode: response.statusCode)
                 }
                 return match
             }
@@ -639,14 +639,32 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
         return messages
     }
 
-    private func handleStreamingResponse(_ response: AIHTTPStreamResponse, expectedID: Int?) async throws -> JSONValue {
+    private func handleStreamingResponse(
+        _ response: AIHTTPStreamResponse, expectedID: Int?, abortSignal: AIAbortSignal? = nil
+    ) async throws -> JSONValue {
         if response.statusCode == 202 {
+            response.cancelBody()
             return .object([:])
         }
 
         let contentType = response.headerValue("content-type") ?? ""
         if contentType.localizedCaseInsensitiveContains("text/event-stream") {
-            return try await processSSEStream(response.body, expectedID: expectedID)
+            defer { response.cancelBody() }
+            let message: JSONValue
+            do {
+                message = try await processSSEStream(response.body, expectedID: expectedID)
+            } catch {
+                try abortSignal?.throwIfAborted()
+                try Task.checkCancellation()
+                guard let expectedID, !(error is MCPClientError), !(error is CancellationError) else { throw error }
+                throw incompleteSSEError(requestID: expectedID, statusCode: response.statusCode, cause: error)
+            }
+            try abortSignal?.throwIfAborted()
+            try Task.checkCancellation()
+            if let expectedID, !isMCPResponse(message, id: expectedID) {
+                throw incompleteSSEError(requestID: expectedID, statusCode: response.statusCode)
+            }
+            return message
         }
 
         let body = try await collectStreamData(response.body)
@@ -690,7 +708,7 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             }
 
             if let expectedID {
-                return message["id"]?.intValue == expectedID ? message : nil
+                return isMCPResponse(message, id: expectedID) ? message : nil
             }
             return nil
         }
@@ -711,6 +729,20 @@ public final class MCPHTTPTransport: MCPTransport, @unchecked Sendable {
             }
         }
         return .array([])
+    }
+
+    private func isMCPResponse(_ message: JSONValue, id: Int) -> Bool {
+        message["id"]?.intValue == id && (message["result"] != nil || message["error"] != nil)
+    }
+
+    private func incompleteSSEError(requestID: Int, statusCode: Int, cause: (any Error)? = nil) -> MCPClientError {
+        MCPClientError(
+            message: "MCP HTTP Transport Error: SSE stream ended before the response for request \(requestID)",
+            code: -32000,
+            statusCode: statusCode,
+            url: url.absoluteString,
+            cause: cause
+        )
     }
 }
 
@@ -770,7 +802,7 @@ actor MCPAuthorizationRecoveryCoordinator {
     }
 }
 /// Upstream `withUserAgentSuffix(headers, 'ai-sdk/<mcp version>', runtime)`.
-let mcpPackageUserAgent = "ai-sdk/2.0.99"
+let mcpPackageUserAgent = "ai-sdk/2.0.102"
 
 func mcpWithUserAgentSuffix(_ headers: [String: String]) -> [String: String] {
     var output = headers

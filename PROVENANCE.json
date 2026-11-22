@@ -1,43 +1,43 @@
 {
   "schemaVersion": 1,
   "package": "swift-ai-mcp",
-  "version": "1.3.0",
-  "releaseID": "upstream-parity-20261116",
+  "version": "1.4.0",
+  "releaseID": "weekly-upstream-20261122",
   "source": {
-    "commit": "1c457dea36be42376a6853aecd5c48ffc4942178",
-    "baseCommit": "1c457dea36be42376a6853aecd5c48ffc4942178",
+    "commit": "73e28c7d4106338c3030bc36700c5922aeb2ebd9",
+    "baseCommit": "73e28c7d4106338c3030bc36700c5922aeb2ebd9",
     "workingTree": false,
-    "inputsSHA256": "d7b8f52add7828d7e9ed20418fe072e7db03e75483a168bb7f5c34e9d2a04a13"
+    "inputsSHA256": "5b64cfae284ecf9a081f1c08d5b5dff83915b3c57b62669a3408e51a52961cb5"
   },
   "dependencies": [
     {
       "package": "swift-ai-core",
-      "from": "1.0.0"
+      "from": "1.3.0"
     }
   ],
   "changes": [
     {
-      "id": "upstream-parity-20261116",
-      "notes": "Tool `title` and metadata, schema `additionalProperties`, `getPrompt` arguments, error and elicitation messages, retry backoff, Streamable HTTP start, redirects and reconnects, and the OAuth token request body match upstream; tools keep their client alive and the legacy SSE transport is added.",
-      "compatibility": "Source-compatible; changes are additive. Request bodies, results, warnings and errors change to match the reviewed upstream package."
+      "id": "weekly-upstream-20261122",
+      "notes": "Fail Streamable HTTP requests with an MCPClientError if the POST event stream ends or disconnects before the matching JSON-RPC response. Reviewed npm: @ai-sdk/mcp 2.0.99 to 2.0.102. Offline validation passed: node Scripts/test-packages.mjs (56 packages, 3672 owning tests and 1760 compatibility tests), generation, tooling, isolation, and version selection. See Docs/Archive/WeeklyUpstreamAudit20261122.md for retained gaps. Paid provider calls were skipped.",
+      "compatibility": "Source-compatible Streamable HTTP error correction. Requires SwiftAI Core 1.3.0 for the existing MCP tool title and metadata contract."
     }
   ],
   "canonicalDirectory": "Packages/swift-ai-mcp",
   "upstream": [
     {
       "name": "@ai-sdk/mcp",
-      "reviewedVersion": "2.0.99",
+      "reviewedVersion": "2.0.102",
       "ledgerKind": "provider",
-      "evidence": "`MCPClient`, `MCPHTTPTransport`, `MCPStdioTransport`, `MCPApps`, `MCPClientTests.swift`, `MCPOAuthTests.swift`, `MCPStdioTransportTests.swift`, `MCPModernProtocolTests.swift`; 2026-11-01 delta: Docs/Archive/WeeklyUpstreamAudit20261101.json; 2026-11-08 delta: Docs/Archive/WeeklyUpstreamAudit20261108.json; 2026-11-14 delta: Docs/Archive/WeeklyUpstreamAudit20261114.json",
+      "evidence": "`MCPClient`, `MCPHTTPTransport`, `MCPStdioTransport`, `MCPApps`, `MCPClientTests.swift`, `MCPOAuthTests.swift`, `MCPStdioTransportTests.swift`, `MCPModernProtocolTests.swift`; 2026-11-01 delta: Docs/Archive/WeeklyUpstreamAudit20261101.json; 2026-11-08 delta: Docs/Archive/WeeklyUpstreamAudit20261108.json; 2026-11-14 delta: Docs/Archive/WeeklyUpstreamAudit20261114.json; 2026-11-22 delta: Docs/Archive/WeeklyUpstreamAudit20261122.json",
       "reviewStatus": "imported-reviewed-with-gaps",
-      "archiveIntegrity": "sha512-9yDWp5WABLMRNKYuLrLIXGtJpIkjwXAdJyYUSu5XpD0cqtuM11LGqk3gb5XGiShco3RT/79W8CkqXskegTtWKw==",
-      "sourceRef": "npm:@ai-sdk/mcp@2.0.99",
-      "testRef": "8bc7652cdb13fc84722666eb93f45acd0d131eee",
+      "archiveIntegrity": "sha512-H26SyvXhU/E/F/zmq5DK9OKhe4KxN1ZVpr2QFb5ULCzFJ1KXkXaNJJ7rj5vDW5u7T/W5qeJx680qpqmbzP2Z/A==",
+      "sourceRef": "npm:@ai-sdk/mcp@2.0.102",
+      "testRef": "3dad57f204c7332178d28c3467c7311875b66a3e",
       "testRefRelationship": "matching-release",
       "contractFamilies": [
         "MCPClient"
       ],
-      "contractReview": "2026-11-14: verified published source/declarations and exact matching-release changed tests reviewed separately; native ports, per-file dispositions and retained gaps are recorded in Docs/Archive/WeeklyUpstreamAudit20261114.json. Delta review is not full-package or live-service parity."
+      "contractReview": "2026-11-22: reviewed the published source and declarations and the matching-release test diffs. Native evidence and explicitly retained coverage gaps are in Docs/Archive/WeeklyUpstreamAudit20261122.json."
     }
   ],
   "note": "Independent port. Imported test refs and contract review gaps retain their original status; export is not new upstream parity proof.",
@@ -96,7 +96,7 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPHTTPTransport.swift",
-      "sha256": "1bd56737f83f2c5bbee932072d6a1cf93bb3148bf14ed781c55707df0cf3cd0e"
+      "sha256": "2228efa39b7095228475c3e2aedcabee694be65dfe475a3527c368f741854379"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Sources/SwiftAIMCP/MCPOAuthDiscovery.swift",
@@ -144,7 +144,7 @@
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPHTTPTransportStreamingTests.swift",
-      "sha256": "427d17383fa5aaea207f08e8e9d5950414c6f0ecffb720042ca1b8bbf28d0f7f"
+      "sha256": "4f065b3f4a8643ce076f5bb7bcadf310f57677edab25670613e8876d7dd03a2d"
     },
     {
       "canonicalPath": "Packages/swift-ai-mcp/Tests/SwiftAIMCPTests/MCPModernProtocolTests.swift",

@@ -6,6 +6,65 @@
 import Foundation
 import Testing
 
+// @ai-sdk/mcp@2.0.102 mcp-http-transport.test.ts: both EOF modes reject the call.
+@Test(arguments: [false, true])
+func mcpHTTPTransportRejectsToolCallWhenPOSTSSEEndsBeforeResponse(brokenConnection: Bool) async throws {
+    let http = IncompletePOSTSSETransport(brokenConnection: brokenConnection)
+    let transport = try MCPHTTPTransport(url: "http://localhost:4000/mcp", transport: http,
+                                         initialProtocolVersion: MCPClient.latestLegacyProtocolVersion)
+    let client = try await MCPClient.connect(transport: transport, protocolVersionDiscovery: false)
+    await #expect {
+        _ = try await client.callTool(name: "echo", arguments: [:])
+    } throws: { error in
+        guard let error = error as? MCPClientError else { return false }
+        let requestID = await http.toolRequestID
+        #expect(requestID != nil)
+        #expect(error.message == "MCP HTTP Transport Error: SSE stream ended before the response for request \(requestID ?? -1)")
+        #expect(error.code == -32000)
+        return true
+    }
+    try await client.close()
+}
+
+private actor IncompletePOSTSSETransport: AIStreamingTransport {
+    let brokenConnection: Bool
+    private(set) var toolRequestID: Int?
+
+    init(brokenConnection: Bool) {
+        self.brokenConnection = brokenConnection
+    }
+
+    func send(_ request: AIHTTPRequest) async throws -> AIHTTPResponse {
+        let result = try await stream(request)
+        var data = Data()
+        for try await chunk in result.body { data.append(chunk) }
+        return .init(statusCode: result.statusCode, headers: result.headers, body: data)
+    }
+
+    func stream(_ request: AIHTTPRequest) async throws -> AIHTTPStreamResponse {
+        guard request.method == "POST" else { return streamResponse(statusCode: 405) }
+        let message = try decodeJSONBody(#require(request.body))
+        switch message["method"] {
+        case .string("initialize"):
+            let body: JSONValue = ["jsonrpc": "2.0", "id": try #require(message["id"]), "result": [
+                "protocolVersion": .string(MCPClient.latestLegacyProtocolVersion),
+                "capabilities": ["tools": [:]], "serverInfo": ["name": "test-server", "version": "1.0.0"]
+            ]]
+            return streamResponse(headers: ["content-type": "application/json"], chunks: [try decisionJSONText(body)])
+        case .string("notifications/initialized"):
+            return streamResponse(statusCode: 202)
+        default:
+            #expect(message["method"] == "tools/call")
+            #expect(message["params"]?["name"] == "echo")
+            toolRequestID = message["id"]?.intValue
+            return AIHTTPStreamResponse(statusCode: 200, headers: ["content-type": "text/event-stream"], body: AsyncThrowingStream {
+                $0.yield(Data(": keep-alive\n\n".utf8))
+                $0.finish(throwing: brokenConnection ? URLError(.networkConnectionLost) : nil)
+            })
+        }
+    }
+}
+
 @Test func mcpHTTPTransportRejectsUnsuccessfulPOSTSSEResponsesWithHTTPDetailsLikeUpstream() async throws {
     let http = StreamingRecordingTransport(responses: [
         streamResponse(

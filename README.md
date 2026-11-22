@@ -1,5 +1,5 @@
 <!-- Generated distribution; edit the canonical repository. -->
-# swift-ai-mcp 1.3.0
+# swift-ai-mcp 1.4.0
 
 Independent Swift-native port of Vercel AI SDK. Source and upstream dispositions are in PROVENANCE.json and Porting/.
 
@@ -8,7 +8,7 @@ Independent Swift-native port of Vercel AI SDK. Source and upstream dispositions
 Add this package to your SwiftPM dependencies:
 
 ```swift
-.package(url: "https://github.com/SwiftAISDK/swift-ai-mcp.git", from: "1.3.0")
+.package(url: "https://github.com/SwiftAISDK/swift-ai-mcp.git", from: "1.4.0")
 ```
 
 Products: `SwiftAIMCP`.
